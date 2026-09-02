@@ -1,9 +1,10 @@
 const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ActivityType, InteractionContextType, ApplicationIntegrationType } = require('discord.js');
 const http = require('http');
 const mongoose = require('mongoose');
+const axios = require('axios');
 require('dotenv').config();
 
-// Keep Render alive (Optional if you host on Render)
+// Keep Render alive
 const PORT = process.env.PORT || 3000;
 http.createServer((req, res) => {
     res.write("AniTracker is running!");
@@ -50,32 +51,29 @@ const client = new Client({
 const DEV_USER_ID = process.env.DEV_USER_ID;
 const SUPPORT_SERVER_URL = process.env.SUPPORT_SERVER_URL || 'https://discord.gg/ZpQcRpZBrB';
 
-// Ultimate Reliable fetch function for AniList API
+// Reliable Axios fetch function for AniList API
 async function fetchAniList(query, variables = {}) {
     try {
-        const response = await fetch('https://graphql.anilist.co', {
-            method: 'POST',
+        const response = await axios.post('https://graphql.anilist.co', {
+            query,
+            variables
+        }, {
             headers: {
                 'Content-Type': 'application/json',
                 'Accept': 'application/json',
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
             },
-            body: JSON.stringify({ query, variables })
+            timeout: 10000
         });
 
-        if (!response.ok) {
-            console.error(`[AniList HTTP Error]: ${response.status} - ${response.statusText}`);
-            throw new Error(`HTTP Error ${response.status}`);
+        if (response.data.errors && response.data.errors.length > 0) {
+            console.error('[AniList GraphQL Error]:', response.data.errors);
+            throw new Error(response.data.errors[0].message);
         }
 
-        const data = await response.json();
-        if (data.errors && data.errors.length > 0) {
-            console.error('[AniList GraphQL Errors]:', data.errors);
-            throw new Error(data.errors[0].message);
-        }
-        return data.data;
+        return response.data.data;
     } catch (err) {
-        console.error('[AniList Fetch Failure]:', err.message);
+        console.error('[AniList Axios Failure]:', err.response ? err.response.data : err.message);
         throw err;
     }
 }
