@@ -57,11 +57,28 @@ async function fetchAniList(query, variables) {
     return response.data.data;
 }
 
-// Register Slash Commands
+// Register Slash Commands (Start Command is at the Top)
 const commands = [
     new SlashCommandBuilder()
         .setName('start')
         .setDescription('Welcome guide, basic features, and support contact'),
+    new SlashCommandBuilder()
+        .setName('favorite')
+        .setDescription('Add an anime to your personal favorites (Receive DM notifications)')
+        .addStringOption(option => 
+            option.setName('title')
+                .setDescription('Anime title to add to favorites')
+                .setRequired(true)),
+    new SlashCommandBuilder()
+        .setName('unfavorite')
+        .setDescription('Remove an anime from your personal favorites')
+        .addStringOption(option => 
+            option.setName('title')
+                .setDescription('Anime title to remove from favorites')
+                .setRequired(true)),
+    new SlashCommandBuilder()
+        .setName('myfavorites')
+        .setDescription('List all your personal favorite anime'),
     new SlashCommandBuilder()
         .setName('help')
         .setDescription('Displays a list of available commands and bot usage guide'),
@@ -97,15 +114,6 @@ const commands = [
                     { name: 'Sports', value: 'Sports' },
                     { name: 'Slice of Life', value: 'Slice of Life' }
                 )),
-    new SlashCommandBuilder()
-        .setName('favorite')
-        .setDescription('Add an anime to your personal favorites (Receive DM notifications)'),
-    new SlashCommandBuilder()
-        .setName('unfavorite')
-        .setDescription('Remove an anime from your personal favorites'),
-    new SlashCommandBuilder()
-        .setName('myfavorites')
-        .setDescription('List all your personal favorite anime'),
     new SlashCommandBuilder()
         .setName('track')
         .setDescription('Track an anime for new episode updates in this channel')
@@ -238,14 +246,14 @@ client.on('interactionCreate', async interaction => {
 
     const { commandName } = interaction;
 
-    // Start Command
+    // 🚀 Start Command (Positioned Top Priority)
     if (commandName === 'start') {
         const embed = new EmbedBuilder()
             .setTitle('🚀 Welcome to AniTracker!')
             .setDescription('Your ultimate Discord companion for anime search, recommendations, and automatic episode notifications!')
             .addFields(
                 { name: '✨ What can AniTracker do?', value: '• Search Anime & Manga details instantly.\n• Track anime in server channels for group alerts.\n• Add anime to personal favorites for **Direct Message (DM)** updates.\n• Find random high-rated anime by category/genre.' },
-                { name: '📚 Quick Start Commands', value: '`/anime` - Search any anime\n`/genre` - Discover by genre\n`/track` - Track in channel\n`/favorite` - Track in DMs\n`/help` - Show full commands list' },
+                { name: '📚 Quick Start Commands', value: '`/anime` - Search any anime\n`/genre` - Discover by genre\n`/track` - Track in channel\n`/favorite <title>` - Track in DMs\n`/help` - Show full commands list' },
                 { name: '🐛 Report a Problem or Request Features', value: 'If you encounter any bugs, issues, or have suggestions, please contact the developer directly:\n👤 **Discord User:** `_h8rtless_`' }
             )
             .setColor('#2ecc71')
@@ -255,88 +263,7 @@ client.on('interactionCreate', async interaction => {
         await interaction.reply({ embeds: [embed] });
     }
 
-    // Help Command
-    else if (commandName === 'help') {
-        const embed = new EmbedBuilder()
-            .setTitle('🤖 AniTracker - Commands Guide')
-            .setDescription('Here is the full list of available slash commands:')
-            .addFields(
-                { name: '🚀 `/start`', value: 'Welcome guide and bug report contact.', inline: false },
-                { name: '🔍 `/anime <title>`', value: 'Search for anime details, quick track, or add to favorites.', inline: false },
-                { name: '📖 `/manga <title>`', value: 'Search for manga details.', inline: false },
-                { name: '🎭 `/genre <category>`', value: 'Find top-rated anime filtered by genre.', inline: false },
-                { name: '⭐ `/favorite <title>`', value: 'Add anime to personal favorites (DM notifications).', inline: false },
-                { name: '❌ `/unfavorite <title>`', value: 'Remove anime from personal favorites.', inline: false },
-                { name: '💖 `/myfavorites`', value: 'Show your personal favorite anime list.', inline: false },
-                { name: '🎯 `/track <title>`', value: 'Track an anime for notifications in this channel.', inline: false },
-                { name: '🛑 `/untrack <title>`', value: 'Stop tracking an anime in this channel.', inline: false },
-                { name: '📌 `/mytracked`', value: 'Show all anime currently tracked in this server.', inline: false }
-            )
-            .setColor('#9b59b6')
-            .setFooter({ text: 'Report bugs to _h8rtless_' });
-
-        await interaction.reply({ embeds: [embed] });
-    }
-
-    // Anime Command
-    else if (commandName === 'anime') {
-        await interaction.deferReply();
-        const searchQuery = interaction.options.getString('title');
-        
-        const gqlQuery = `
-        query ($search: String) {
-          Media (search: $search, type: ANIME) {
-            id
-            title { romaji english }
-            episodes
-            status
-            averageScore
-            description(asHtml: false)
-            coverImage { large }
-            siteUrl
-          }
-        }`;
-
-        try {
-            const data = await fetchAniList(gqlQuery, { search: searchQuery });
-            const anime = data?.Media;
-
-            if (!anime) return interaction.editReply('Anime not found!');
-
-            const title = (anime.title && (anime.title.english || anime.title.romaji)) || searchQuery;
-            const cleanDesc = anime.description ? anime.description.replace(/<[^>]*>?/gm, '').substring(0, 300) + '...' : 'No synopsis available.';
-
-            const embed = new EmbedBuilder()
-                .setTitle(title)
-                .setURL(anime.siteUrl || 'https://anilist.co')
-                .setThumbnail(anime.coverImage?.large || 'https://i.imgur.com/AGv4yDI.png')
-                .addFields(
-                    { name: 'Episodes', value: `${anime.episodes ?? 'N/A'}`, inline: true },
-                    { name: 'Status', value: anime.status || 'N/A', inline: true },
-                    { name: 'Score', value: anime.averageScore ? `${anime.averageScore} / 100` : 'N/A', inline: true }
-                )
-                .setDescription(cleanDesc)
-                .setColor('#FF5733');
-
-            const trackBtn = new ButtonBuilder()
-                .setCustomId(`track_btn_${anime.id}`)
-                .setLabel('🎯 Channel Track')
-                .setStyle(ButtonStyle.Success);
-
-            const favBtn = new ButtonBuilder()
-                .setCustomId(`fav_btn_${anime.id}`)
-                .setLabel('⭐ Favorite (DM Alert)')
-                .setStyle(ButtonStyle.Primary);
-
-            const row = new ActionRowBuilder().addComponents(trackBtn, favBtn);
-
-            await interaction.editReply({ embeds: [embed], components: [row] });
-        } catch (err) {
-            await interaction.editReply('Failed to fetch anime data.');
-        }
-    }
-
-    // Favorite Commands
+    // Favorite Command (Now requires title search)
     else if (commandName === 'favorite') {
         await interaction.deferReply({ ephemeral: true });
         const searchQuery = interaction.options.getString('title');
@@ -355,7 +282,7 @@ client.on('interactionCreate', async interaction => {
             const data = await fetchAniList(gqlQuery, { search: searchQuery });
             const anime = data?.Media;
 
-            if (!anime) return interaction.editReply('Anime not found!');
+            if (!anime) return interaction.editReply('Anime not found! Please check the title and try again.');
 
             const animeTitle = (anime.title && (anime.title.english || anime.title.romaji)) || searchQuery;
             const existing = await FavoriteItem.findOne({ userId: interaction.user.id, animeId: anime.id });
@@ -426,6 +353,87 @@ client.on('interactionCreate', async interaction => {
             await interaction.editReply({ embeds: [embed] });
         } catch (err) {
             await interaction.editReply('Failed to fetch favorites list.');
+        }
+    }
+
+    // Help Command
+    else if (commandName === 'help') {
+        const embed = new EmbedBuilder()
+            .setTitle('🤖 AniTracker - Commands Guide')
+            .setDescription('Here is the full list of available slash commands:')
+            .addFields(
+                { name: '🚀 `/start`', value: 'Welcome guide and bug report contact.', inline: false },
+                { name: '⭐ `/favorite <title>`', value: 'Add anime to personal favorites (DM notifications).', inline: false },
+                { name: '❌ `/unfavorite <title>`', value: 'Remove anime from personal favorites.', inline: false },
+                { name: '💖 `/myfavorites`', value: 'Show your personal favorite anime list.', inline: false },
+                { name: '🔍 `/anime <title>`', value: 'Search for anime details, quick track, or add to favorites.', inline: false },
+                { name: '📖 `/manga <title>`', value: 'Search for manga details.', inline: false },
+                { name: '🎭 `/genre <category>`', value: 'Find top-rated anime filtered by genre.', inline: false },
+                { name: '🎯 `/track <title>`', value: 'Track an anime for notifications in this channel.', inline: false },
+                { name: '🛑 `/untrack <title>`', value: 'Stop tracking an anime in this channel.', inline: false },
+                { name: '📌 `/mytracked`', value: 'Show all anime currently tracked in this server.', inline: false }
+            )
+            .setColor('#9b59b6')
+            .setFooter({ text: 'Report bugs to _h8rtless_' });
+
+        await interaction.reply({ embeds: [embed] });
+    }
+
+    // Anime Command
+    else if (commandName === 'anime') {
+        await interaction.deferReply();
+        const searchQuery = interaction.options.getString('title');
+        
+        const gqlQuery = `
+        query ($search: String) {
+          Media (search: $search, type: ANIME) {
+            id
+            title { romaji english }
+            episodes
+            status
+            averageScore
+            description(asHtml: false)
+            coverImage { large }
+            siteUrl
+          }
+        }`;
+
+        try {
+            const data = await fetchAniList(gqlQuery, { search: searchQuery });
+            const anime = data?.Media;
+
+            if (!anime) return interaction.editReply('Anime not found!');
+
+            const title = (anime.title && (anime.title.english || anime.title.romaji)) || searchQuery;
+            const cleanDesc = anime.description ? anime.description.replace(/<[^>]*>?/gm, '').substring(0, 300) + '...' : 'No synopsis available.';
+
+            const embed = new EmbedBuilder()
+                .setTitle(title)
+                .setURL(anime.siteUrl || 'https://anilist.co')
+                .setThumbnail(anime.coverImage?.large || 'https://i.imgur.com/AGv4yDI.png')
+                .addFields(
+                    { name: 'Episodes', value: `${anime.episodes ?? 'N/A'}`, inline: true },
+                    { name: 'Status', value: anime.status || 'N/A', inline: true },
+                    { name: 'Score', value: anime.averageScore ? `${anime.averageScore} / 100` : 'N/A', inline: true }
+                )
+                .setDescription(cleanDesc)
+                .setColor('#FF5733');
+
+            const trackBtn = new ButtonBuilder()
+                .setCustomId(`track_btn_${anime.id}`)
+                .setLabel('🎯 Channel Track')
+                .setStyle(ButtonStyle.Success);
+
+            const favBtn = new ButtonBuilder()
+                .setCustomId(`fav_btn_${anime.id}`)
+                .setLabel('⭐ Favorite (DM Alert)')
+                .setStyle(ButtonStyle.Primary);
+
+            const row = new ActionRowBuilder().addComponents(trackBtn, favBtn);
+
+            await interaction.editReply({ embeds: [embed], components: [row] });
+        } catch (err) {
+            await interaction.editReply('Failed to fetch anime data.');
         }
     }
 
