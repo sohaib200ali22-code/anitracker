@@ -1,9 +1,11 @@
-const express = require('express');
-const app = express();
-const port = process.env.PORT || 3000;
+const http = require('http');
 
-app.get('/', (req, res) => res.send('AniTracker is Live!'));
-app.listen(port, () => console.log(`Server running on port ${port}`));require('dotenv').config();
+http.createServer((req, res) => {
+  res.write('AniTracker is Live!');
+  res.end();
+}).listen(process.env.PORT || 3000);
+
+require('dotenv').config();
 const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const axios = require('axios');
 
