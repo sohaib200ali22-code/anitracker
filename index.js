@@ -51,6 +51,9 @@ async function fetchAniList(query, variables) {
 // Register Slash Commands
 const commands = [
     new SlashCommandBuilder()
+        .setName('help')
+        .setDescription('Displays a list of available commands and bot usage guide'),
+    new SlashCommandBuilder()
         .setName('anime')
         .setDescription('Search for an anime')
         .addStringOption(option => 
@@ -64,6 +67,24 @@ const commands = [
             option.setName('title')
                 .setDescription('Manga title')
                 .setRequired(true)),
+    new SlashCommandBuilder()
+        .setName('genre')
+        .setDescription('Find a highly-rated anime by genre')
+        .addStringOption(option =>
+            option.setName('category')
+                .setDescription('Choose a genre')
+                .setRequired(true)
+                .addChoices(
+                    { name: 'Action', value: 'Action' },
+                    { name: 'Adventure', value: 'Adventure' },
+                    { name: 'Comedy', value: 'Comedy' },
+                    { name: 'Fantasy', value: 'Fantasy' },
+                    { name: 'Romance', value: 'Romance' },
+                    { name: 'Sci-Fi', value: 'Sci-Fi' },
+                    { name: 'Horror', value: 'Horror' },
+                    { name: 'Sports', value: 'Sports' },
+                    { name: 'Slice of Life', value: 'Slice of Life' }
+                )),
     new SlashCommandBuilder()
         .setName('track')
         .setDescription('Track an anime for new episode updates in this channel')
@@ -158,7 +179,27 @@ client.on('interactionCreate', async interaction => {
 
     const { commandName } = interaction;
 
-    if (commandName === 'anime') {
+    // Help Command
+    if (commandName === 'help') {
+        const embed = new EmbedBuilder()
+            .setTitle('🤖 AniTracker - Commands Guide')
+            .setDescription('Welcome to **AniTracker**! Here is the list of all available slash commands:')
+            .addFields(
+                { name: '🔍 `/anime <title>`', value: 'Search for anime details & quick track with a button.', inline: false },
+                { name: '📖 `/manga <title>`', value: 'Search for manga details.', inline: false },
+                { name: '🎭 `/genre <category>`', value: 'Find top-rated anime filtered by genre.', inline: false },
+                { name: '🎯 `/track <title>`', value: 'Start tracking an anime for episode release notifications in this channel.', inline: false },
+                { name: '🛑 `/untrack <title>`', value: 'Stop tracking an anime in this server.', inline: false },
+                { name: '📌 `/mytracked`', value: 'Show all anime currently tracked in this server.', inline: false }
+            )
+            .setColor('#9b59b6')
+            .setFooter({ text: 'AniTracker • Powered by AniList API' });
+
+        await interaction.reply({ embeds: [embed] });
+    }
+
+    // Anime Search Command
+    else if (commandName === 'anime') {
         await interaction.deferReply();
         const searchQuery = interaction.options.getString('title');
         
@@ -211,6 +252,7 @@ client.on('interactionCreate', async interaction => {
         }
     } 
     
+    // Manga Search Command
     else if (commandName === 'manga') {
         await interaction.deferReply();
         const searchQuery = interaction.options.getString('title');
@@ -256,6 +298,66 @@ client.on('interactionCreate', async interaction => {
         }
     }
 
+    // Genre Search Command
+    else if (commandName === 'genre') {
+        await interaction.deferReply();
+        const genreChoice = interaction.options.getString('category');
+
+        const gqlQuery = `
+        query ($genre: String) {
+          Page (page: 1, perPage: 10) {
+            media (genre: $genre, type: ANIME, sort: SCORE_DESC) {
+              id
+              title { romaji english }
+              episodes
+              status
+              averageScore
+              description(asHtml: false)
+              coverImage { large }
+              siteUrl
+            }
+          }
+        }`;
+
+        try {
+            const data = await fetchAniList(gqlQuery, { genre: genreChoice });
+            const mediaList = data?.Page?.media;
+
+            if (!mediaList || mediaList.length === 0) {
+                return interaction.editReply(`No anime found for genre: ${genreChoice}`);
+            }
+
+            // Pick a random top anime from the genre list
+            const anime = mediaList[Math.floor(Math.random() * mediaList.length)];
+            const title = (anime.title && (anime.title.english || anime.title.romaji)) || 'Anime Title';
+            const cleanDesc = anime.description ? anime.description.replace(/<[^>]*>?/gm, '').substring(0, 300) + '...' : 'No synopsis available.';
+
+            const embed = new EmbedBuilder()
+                .setTitle(`🎭 ${genreChoice} Recommendation: ${title}`)
+                .setURL(anime.siteUrl || 'https://anilist.co')
+                .setThumbnail(anime.coverImage?.large || 'https://i.imgur.com/AGv4yDI.png')
+                .addFields(
+                    { name: 'Episodes', value: `${anime.episodes ?? 'N/A'}`, inline: true },
+                    { name: 'Status', value: anime.status || 'N/A', inline: true },
+                    { name: 'Score', value: anime.averageScore ? `${anime.averageScore} / 100` : 'N/A', inline: true }
+                )
+                .setDescription(cleanDesc)
+                .setColor('#1abc9c');
+
+            const trackBtn = new ButtonBuilder()
+                .setCustomId(`track_btn_${anime.id}`)
+                .setLabel('🎯 Track This Anime')
+                .setStyle(ButtonStyle.Success);
+
+            const row = new ActionRowBuilder().addComponents(trackBtn);
+
+            await interaction.editReply({ embeds: [embed], components: [row] });
+        } catch (err) {
+            await interaction.editReply('Failed to fetch genre recommendations.');
+        }
+    }
+
+    // Track Command
     else if (commandName === 'track') {
         await interaction.deferReply();
         const searchQuery = interaction.options.getString('title');
@@ -314,6 +416,7 @@ client.on('interactionCreate', async interaction => {
         }
     }
 
+    // Untrack Command
     else if (commandName === 'untrack') {
         await interaction.deferReply();
         const searchQuery = interaction.options.getString('title');
@@ -345,6 +448,7 @@ client.on('interactionCreate', async interaction => {
         }
     }
 
+    // List Tracked Command
     else if (commandName === 'mytracked') {
         await interaction.deferReply();
         try {
