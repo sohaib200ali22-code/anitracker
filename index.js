@@ -26,7 +26,12 @@ const TrackSchema = new mongoose.Schema({
 });
 const TrackedItem = mongoose.model('TrackedItem', TrackSchema);
 
-const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+const client = new Client({ 
+    intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildPresences
+    ] 
+});
 
 // AniList API GraphQL Helper Function
 async function fetchAniList(query, variables) {
