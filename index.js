@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ActivityType } = require('discord.js');
 const axios = require('axios');
 const http = require('http');
 const mongoose = require('mongoose');
@@ -80,6 +80,11 @@ const commands = [
 
 client.once('ready', async () => {
     console.log(`Logged in as ${client.user.tag}!`);
+
+    // Set Custom Status Activity
+    client.user.setActivity('AniList for new episodes 📺', { type: ActivityType.Watching });
+    client.user.setStatus('online');
+
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
     try {
         console.log('Started refreshing application (/) commands.');
@@ -97,6 +102,53 @@ client.once('ready', async () => {
 });
 
 client.on('interactionCreate', async interaction => {
+    // Handle Interactive Buttons
+    if (interaction.isButton()) {
+        if (interaction.customId.startsWith('track_btn_')) {
+            await interaction.deferReply({ ephemeral: true });
+            const animeId = parseInt(interaction.customId.replace('track_btn_', ''));
+
+            const gqlQuery = `
+            query ($id: Int) {
+              Media (id: $id, type: ANIME) {
+                id
+                title { romaji english }
+                episodes
+                status
+                siteUrl
+              }
+            }`;
+
+            try {
+                const data = await fetchAniList(gqlQuery, { id: animeId });
+                const anime = data?.Media;
+
+                if (!anime) return interaction.editReply({ content: 'Anime not found!' });
+
+                const animeTitle = (anime.title && (anime.title.english || anime.title.romaji)) || 'Unknown Anime';
+                const existing = await TrackedItem.findOne({ guildId: interaction.guildId, animeId: anime.id });
+                
+                if (existing) {
+                    return await interaction.editReply({ content: `**${animeTitle}** is already tracked in this server!` });
+                }
+
+                await TrackedItem.create({
+                    guildId: interaction.guildId,
+                    channelId: interaction.channelId,
+                    animeId: anime.id,
+                    animeTitle: animeTitle,
+                    lastEpisodes: anime.episodes || 0,
+                    lastStatus: anime.status || 'UNKNOWN'
+                });
+
+                await interaction.editReply({ content: `🎯 Successfully started tracking **[${animeTitle}](${anime.siteUrl})** in this channel!` });
+            } catch (err) {
+                await interaction.editReply({ content: 'Failed to track via button.' });
+            }
+        }
+        return;
+    }
+
     if (!interaction.isChatInputCommand()) return;
 
     const { commandName } = interaction;
@@ -140,7 +192,15 @@ client.on('interactionCreate', async interaction => {
                 .setDescription(cleanDesc)
                 .setColor('#FF5733');
 
-            await interaction.editReply({ embeds: [embed] });
+            // Quick Track Button
+            const trackBtn = new ButtonBuilder()
+                .setCustomId(`track_btn_${anime.id}`)
+                .setLabel('🎯 Track This Anime')
+                .setStyle(ButtonStyle.Success);
+
+            const row = new ActionRowBuilder().addComponents(trackBtn);
+
+            await interaction.editReply({ embeds: [embed], components: [row] });
         } catch (err) {
             await interaction.editReply('Failed to fetch anime data.');
         }
