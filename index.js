@@ -1,7 +1,6 @@
 const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ActivityType, InteractionContextType, ApplicationIntegrationType } = require('discord.js');
 const http = require('http');
 const mongoose = require('mongoose');
-const axios = require('axios');
 require('dotenv').config();
 
 // Keep Render alive
@@ -51,29 +50,29 @@ const client = new Client({
 const DEV_USER_ID = process.env.DEV_USER_ID;
 const SUPPORT_SERVER_URL = process.env.SUPPORT_SERVER_URL || 'https://discord.gg/ZpQcRpZBrB';
 
-// Reliable Axios fetch function for AniList API
+// Native Node.js Fetch function for AniList API (No external dependencies required!)
 async function fetchAniList(query, variables = {}) {
     try {
-        const response = await axios.post('https://graphql.anilist.co', {
-            query,
-            variables
-        }, {
+        const response = await fetch('https://graphql.anilist.co', {
+            method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'Accept': 'application/json',
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
             },
-            timeout: 10000
+            body: JSON.stringify({ query, variables })
         });
 
-        if (response.data.errors && response.data.errors.length > 0) {
-            console.error('[AniList GraphQL Error]:', response.data.errors);
-            throw new Error(response.data.errors[0].message);
+        const json = await response.json();
+
+        if (json.errors && json.errors.length > 0) {
+            console.error('[AniList GraphQL Error]:', json.errors);
+            throw new Error(json.errors[0].message);
         }
 
-        return response.data.data;
+        return json.data;
     } catch (err) {
-        console.error('[AniList Axios Failure]:', err.response ? err.response.data : err.message);
+        console.error('[AniList Fetch Failure]:', err.message);
         throw err;
     }
 }
@@ -203,7 +202,6 @@ client.once('ready', async () => {
 });
 
 client.on('interactionCreate', async interaction => {
-    // Handle Interactive Buttons
     if (interaction.isButton()) {
         const customId = interaction.customId;
 
