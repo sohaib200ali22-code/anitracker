@@ -50,30 +50,37 @@ const client = new Client({
 const DEV_USER_ID = process.env.DEV_USER_ID;
 const SUPPORT_SERVER_URL = process.env.SUPPORT_SERVER_URL || 'https://discord.gg/ZpQcRpZBrB';
 
-// Reliable fetch function using native Node.js fetch
-async function fetchAniList(query, variables) {
-    const response = await fetch('https://graphql.anilist.co', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-        },
-        body: JSON.stringify({ query, variables })
-    });
-    
-    if (!response.ok) {
-        throw new Error(`AniList API status: ${response.status}`);
-    }
+// Ultimate Reliable fetch function for AniList API
+async function fetchAniList(query, variables = {}) {
+    try {
+        const response = await fetch('https://graphql.anilist.co', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+            },
+            body: JSON.stringify({ query, variables })
+        });
 
-    const data = await response.json();
-    if (data.errors) {
-        console.error('AniList GraphQL Errors:', data.errors);
-        throw new Error(data.errors[0].message);
+        if (!response.ok) {
+            console.error(`[AniList HTTP Error]: ${response.status} - ${response.statusText}`);
+            throw new Error(`HTTP Error ${response.status}`);
+        }
+
+        const data = await response.json();
+        if (data.errors && data.errors.length > 0) {
+            console.error('[AniList GraphQL Errors]:', data.errors);
+            throw new Error(data.errors[0].message);
+        }
+        return data.data;
+    } catch (err) {
+        console.error('[AniList Fetch Failure]:', err.message);
+        throw err;
     }
-    return data.data;
 }
 
-// Global Command Helper Function to enable User Install everywhere
+// Global Command Helper Function
 function createCommand(name, description) {
     return new SlashCommandBuilder()
         .setName(name)
@@ -995,7 +1002,7 @@ client.on('interactionCreate', async interaction => {
     }
 });
 
-// Automated Episode Checker Function
+// Automated Episode Checker
 async function checkUpdates() {
     try {
         const tracked = await TrackedItem.find({});
