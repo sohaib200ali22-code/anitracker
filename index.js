@@ -125,15 +125,15 @@ client.on('interactionCreate', async interaction => {
 
             if (!anime) return interaction.editReply('Anime not found!');
 
-            const title = anime.title.english || anime.title.romaji;
+            const title = (anime.title && (anime.title.english || anime.title.romaji)) || searchQuery;
             const cleanDesc = anime.description ? anime.description.replace(/<[^>]*>?/gm, '').substring(0, 300) + '...' : 'No synopsis available.';
 
             const embed = new EmbedBuilder()
                 .setTitle(title)
-                .setURL(anime.siteUrl)
-                .setThumbnail(anime.coverImage.large)
+                .setURL(anime.siteUrl || 'https://anilist.co')
+                .setThumbnail(anime.coverImage?.large || 'https://i.imgur.com/AGv4yDI.png')
                 .addFields(
-                    { name: 'Episodes', value: `${anime.episodes || 'N/A'}`, inline: true },
+                    { name: 'Episodes', value: `${anime.episodes ?? 'N/A'}`, inline: true },
                     { name: 'Status', value: anime.status || 'N/A', inline: true },
                     { name: 'Score', value: anime.averageScore ? `${anime.averageScore} / 100` : 'N/A', inline: true }
                 )
@@ -170,15 +170,15 @@ client.on('interactionCreate', async interaction => {
 
             if (!manga) return interaction.editReply('Manga not found!');
 
-            const title = manga.title.english || manga.title.romaji;
+            const title = (manga.title && (manga.title.english || manga.title.romaji)) || searchQuery;
             const cleanDesc = manga.description ? manga.description.replace(/<[^>]*>?/gm, '').substring(0, 300) + '...' : 'No synopsis available.';
 
             const embed = new EmbedBuilder()
                 .setTitle(title)
-                .setURL(manga.siteUrl)
-                .setThumbnail(manga.coverImage.large)
+                .setURL(manga.siteUrl || 'https://anilist.co')
+                .setThumbnail(manga.coverImage?.large || 'https://i.imgur.com/AGv4yDI.png')
                 .addFields(
-                    { name: 'Chapters', value: `${manga.chapters || 'N/A'}`, inline: true },
+                    { name: 'Chapters', value: `${manga.chapters ?? 'N/A'}`, inline: true },
                     { name: 'Status', value: manga.status || 'N/A', inline: true },
                     { name: 'Score', value: manga.averageScore ? `${manga.averageScore} / 100` : 'N/A', inline: true }
                 )
@@ -215,32 +215,36 @@ client.on('interactionCreate', async interaction => {
                 return await interaction.editReply('Anime not found!');
             }
 
-            const animeTitle = anime.title.english || anime.title.romaji;
+            const animeTitle = (anime.title && (anime.title.english || anime.title.romaji)) || searchQuery;
+            const animeId = anime.id;
+            const animeEpisodes = anime.episodes || 0;
+            const animeStatus = anime.status || 'UNKNOWN';
+            const coverUrl = (anime.coverImage && anime.coverImage.large) || 'https://i.imgur.com/AGv4yDI.png';
+            const siteUrl = anime.siteUrl || 'https://anilist.co';
 
-            const existing = await TrackedItem.findOne({ guildId: interaction.guildId, animeId: anime.id });
+            const existing = await TrackedItem.findOne({ guildId: interaction.guildId, animeId: animeId });
             if (existing) {
                 return await interaction.editReply(`**${animeTitle}** is already being tracked in this server!`);
             }
 
-            // تم ضبط القيم لتفادي أي إيرور لو الحلقات null أو غير متوفرة
             await TrackedItem.create({
                 guildId: interaction.guildId,
                 channelId: interaction.channelId,
-                animeId: anime.id,
+                animeId: animeId,
                 animeTitle: animeTitle,
-                lastEpisodes: anime.episodes || 0,
-                lastStatus: anime.status
+                lastEpisodes: animeEpisodes,
+                lastStatus: animeStatus
             });
 
             const embed = new EmbedBuilder()
                 .setTitle('🎯 Tracking Started!')
-                .setDescription(`Now tracking **[${animeTitle}](${anime.siteUrl})** in this channel.\nYou will receive alerts here when new episodes release!`)
-                .setThumbnail(anime.coverImage.large)
+                .setDescription(`Now tracking **[${animeTitle}](${siteUrl})** in this channel.\nYou will receive alerts here when new episodes release!`)
+                .setThumbnail(coverUrl)
                 .setColor('#3498db');
 
             await interaction.editReply({ embeds: [embed] });
         } catch (err) {
-            console.error('Track Command Error:', err.message);
+            console.error('Track Command Error:', err);
             await interaction.editReply(`Failed to track this anime. Details: ${err.message}`);
         }
     }
@@ -263,7 +267,7 @@ client.on('interactionCreate', async interaction => {
 
             if (!anime) return interaction.editReply('Anime not found!');
 
-            const animeTitle = anime.title.english || anime.title.romaji;
+            const animeTitle = (anime.title && (anime.title.english || anime.title.romaji)) || searchQuery;
             const deleted = await TrackedItem.findOneAndDelete({ guildId: interaction.guildId, animeId: anime.id });
             
             if (!deleted) {
@@ -320,21 +324,26 @@ async function checkUpdates() {
 
                 if (anime) {
                     const currentEps = anime.episodes || 0;
-                    if (currentEps > item.lastEpisodes) {
+                    const lastEps = item.lastEpisodes || 0;
+                    
+                    if (currentEps > lastEps) {
                         const channel = await client.channels.fetch(item.channelId).catch(() => null);
                         if (channel) {
-                            const animeTitle = anime.title.english || anime.title.romaji;
+                            const animeTitle = (anime.title && (anime.title.english || anime.title.romaji)) || item.animeTitle;
+                            const siteUrl = anime.siteUrl || 'https://anilist.co';
+                            const coverUrl = (anime.coverImage && anime.coverImage.large) || 'https://i.imgur.com/AGv4yDI.png';
+
                             const embed = new EmbedBuilder()
                                 .setTitle(`🚨 New Episode Released!`)
-                                .setDescription(`Episode **${currentEps}** of **[${animeTitle}](${anime.siteUrl})** is now available! 🎉`)
-                                .setThumbnail(anime.coverImage.large)
+                                .setDescription(`Episode **${currentEps}** of **[${animeTitle}](${siteUrl})** is now available! 🎉`)
+                                .setThumbnail(coverUrl)
                                 .setColor('#e74c3c');
 
                             await channel.send({ embeds: [embed] });
                         }
 
                         item.lastEpisodes = currentEps;
-                        item.lastStatus = anime.status;
+                        item.lastStatus = anime.status || 'UNKNOWN';
                         await item.save();
                     }
                 }
