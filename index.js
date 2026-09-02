@@ -28,6 +28,21 @@ const TrackedItem = mongoose.model('TrackedItem', TrackSchema);
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
+// AniList API GraphQL Helper Function
+async function fetchAniList(query, variables) {
+    const response = await axios.post('https://graphql.anilist.co', {
+        query,
+        variables
+    }, {
+        headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+        },
+        timeout: 10000
+    });
+    return response.data.data;
+}
+
 // Register Slash Commands
 const commands = [
     new SlashCommandBuilder()
@@ -68,12 +83,10 @@ client.once('ready', async () => {
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
     try {
         console.log('Started refreshing application (/) commands.');
-        
         await rest.put(
             Routes.applicationCommands(client.user.id),
             { body: commands }
         );
-        
         console.log('Successfully reloaded application (/) commands!');
     } catch (error) {
         console.error('Error registering commands:', error);
@@ -90,22 +103,41 @@ client.on('interactionCreate', async interaction => {
 
     if (commandName === 'anime') {
         await interaction.deferReply();
-        const query = interaction.options.getString('title');
+        const searchQuery = interaction.options.getString('title');
+        
+        const gqlQuery = `
+        query ($search: String) {
+          Media (search: $search, type: ANIME) {
+            id
+            title { romaji english }
+            episodes
+            status
+            averageScore
+            description(asHtml: false)
+            coverImage { large }
+            siteUrl
+          }
+        }`;
+
         try {
-            const res = await axios.get(`https://api.jikan.moe/v4/anime?q=${encodeURIComponent(query)}&limit=1`);
-            const anime = res.data.data?.[0];
+            const data = await fetchAniList(gqlQuery, { search: searchQuery });
+            const anime = data?.Media;
+
             if (!anime) return interaction.editReply('Anime not found!');
 
+            const title = anime.title.english || anime.title.romaji;
+            const cleanDesc = anime.description ? anime.description.replace(/<[^>]*>?/gm, '').substring(0, 300) + '...' : 'No synopsis available.';
+
             const embed = new EmbedBuilder()
-                .setTitle(anime.title)
-                .setURL(anime.url)
-                .setThumbnail(anime.images.jpg.image_url)
+                .setTitle(title)
+                .setURL(anime.siteUrl)
+                .setThumbnail(anime.coverImage.large)
                 .addFields(
                     { name: 'Episodes', value: `${anime.episodes || 'N/A'}`, inline: true },
                     { name: 'Status', value: anime.status || 'N/A', inline: true },
-                    { name: 'Score', value: `${anime.score || 'N/A'}`, inline: true }
+                    { name: 'Score', value: anime.averageScore ? `${anime.averageScore} / 100` : 'N/A', inline: true }
                 )
-                .setDescription(anime.synopsis ? anime.synopsis.substring(0, 300) + '...' : 'No synopsis available.')
+                .setDescription(cleanDesc)
                 .setColor('#FF5733');
 
             await interaction.editReply({ embeds: [embed] });
@@ -116,22 +148,41 @@ client.on('interactionCreate', async interaction => {
     
     else if (commandName === 'manga') {
         await interaction.deferReply();
-        const query = interaction.options.getString('title');
+        const searchQuery = interaction.options.getString('title');
+
+        const gqlQuery = `
+        query ($search: String) {
+          Media (search: $search, type: MANGA) {
+            id
+            title { romaji english }
+            chapters
+            status
+            averageScore
+            description(asHtml: false)
+            coverImage { large }
+            siteUrl
+          }
+        }`;
+
         try {
-            const res = await axios.get(`https://api.jikan.moe/v4/manga?q=${encodeURIComponent(query)}&limit=1`);
-            const manga = res.data.data?.[0];
+            const data = await fetchAniList(gqlQuery, { search: searchQuery });
+            const manga = data?.Media;
+
             if (!manga) return interaction.editReply('Manga not found!');
 
+            const title = manga.title.english || manga.title.romaji;
+            const cleanDesc = manga.description ? manga.description.replace(/<[^>]*>?/gm, '').substring(0, 300) + '...' : 'No synopsis available.';
+
             const embed = new EmbedBuilder()
-                .setTitle(manga.title)
-                .setURL(manga.url)
-                .setThumbnail(manga.images.jpg.image_url)
+                .setTitle(title)
+                .setURL(manga.siteUrl)
+                .setThumbnail(manga.coverImage.large)
                 .addFields(
                     { name: 'Chapters', value: `${manga.chapters || 'N/A'}`, inline: true },
                     { name: 'Status', value: manga.status || 'N/A', inline: true },
-                    { name: 'Score', value: `${manga.score || 'N/A'}`, inline: true }
+                    { name: 'Score', value: manga.averageScore ? `${manga.averageScore} / 100` : 'N/A', inline: true }
                 )
-                .setDescription(manga.synopsis ? manga.synopsis.substring(0, 300) + '...' : 'No synopsis available.')
+                .setDescription(cleanDesc)
                 .setColor('#33FF57');
 
             await interaction.editReply({ embeds: [embed] });
@@ -142,56 +193,83 @@ client.on('interactionCreate', async interaction => {
 
     else if (commandName === 'track') {
         await interaction.deferReply();
-        const query = interaction.options.getString('title');
+        const searchQuery = interaction.options.getString('title');
+
+        const gqlQuery = `
+        query ($search: String) {
+          Media (search: $search, type: ANIME) {
+            id
+            title { romaji english }
+            episodes
+            status
+            coverImage { large }
+            siteUrl
+          }
+        }`;
+
         try {
-            const res = await axios.get(`https://api.jikan.moe/v4/anime?q=${encodeURIComponent(query)}&limit=1`);
-            const anime = res.data.data?.[0];
-            
+            const data = await fetchAniList(gqlQuery, { search: searchQuery });
+            const anime = data?.Media;
+
             if (!anime) {
                 return await interaction.editReply('Anime not found!');
             }
 
-            const existing = await TrackedItem.findOne({ guildId: interaction.guildId, animeId: anime.mal_id });
+            const animeTitle = anime.title.english || anime.title.romaji;
+
+            const existing = await TrackedItem.findOne({ guildId: interaction.guildId, animeId: anime.id });
             if (existing) {
-                return await interaction.editReply(`**${anime.title}** is already being tracked in this server!`);
+                return await interaction.editReply(`**${animeTitle}** is already being tracked in this server!`);
             }
 
             await TrackedItem.create({
                 guildId: interaction.guildId,
                 channelId: interaction.channelId,
-                animeId: anime.mal_id,
-                animeTitle: anime.title,
+                animeId: anime.id,
+                animeTitle: animeTitle,
                 lastEpisodes: anime.episodes || 0,
                 lastStatus: anime.status
             });
 
             const embed = new EmbedBuilder()
                 .setTitle('🎯 Tracking Started!')
-                .setDescription(`Now tracking **[${anime.title}](${anime.url})** in this channel.\nYou will receive alerts here when new episodes release!`)
-                .setThumbnail(anime.images.jpg.image_url)
+                .setDescription(`Now tracking **[${animeTitle}](${anime.siteUrl})** in this channel.\nYou will receive alerts here when new episodes release!`)
+                .setThumbnail(anime.coverImage.large)
                 .setColor('#3498db');
 
             await interaction.editReply({ embeds: [embed] });
         } catch (err) {
-            console.error('Track Command Error:', err);
+            console.error('Track Command Error:', err.message);
             await interaction.editReply(`Failed to track this anime. Details: ${err.message}`);
         }
     }
 
     else if (commandName === 'untrack') {
         await interaction.deferReply();
-        const query = interaction.options.getString('title');
+        const searchQuery = interaction.options.getString('title');
+
+        const gqlQuery = `
+        query ($search: String) {
+          Media (search: $search, type: ANIME) {
+            id
+            title { romaji english }
+          }
+        }`;
+
         try {
-            const res = await axios.get(`https://api.jikan.moe/v4/anime?q=${encodeURIComponent(query)}&limit=1`);
-            const anime = res.data.data?.[0];
+            const data = await fetchAniList(gqlQuery, { search: searchQuery });
+            const anime = data?.Media;
+
             if (!anime) return interaction.editReply('Anime not found!');
 
-            const deleted = await TrackedItem.findOneAndDelete({ guildId: interaction.guildId, animeId: anime.mal_id });
+            const animeTitle = anime.title.english || anime.title.romaji;
+            const deleted = await TrackedItem.findOneAndDelete({ guildId: interaction.guildId, animeId: anime.id });
+            
             if (!deleted) {
-                return interaction.editReply(`**${anime.title}** was not being tracked.`);
+                return interaction.editReply(`**${animeTitle}** was not being tracked.`);
             }
 
-            await interaction.editReply(`🚨 Stopped tracking **${anime.title}**.`);
+            await interaction.editReply(`🚨 Stopped tracking **${animeTitle}**.`);
         } catch (err) {
             await interaction.editReply('Failed to untrack.');
         }
@@ -224,18 +302,31 @@ async function checkUpdates() {
         const tracked = await TrackedItem.find({});
         for (const item of tracked) {
             try {
-                const res = await axios.get(`https://api.jikan.moe/v4/anime/${item.animeId}`);
-                const anime = res.data.data;
+                const gqlQuery = `
+                query ($id: Int) {
+                  Media (id: $id, type: ANIME) {
+                    id
+                    title { romaji english }
+                    episodes
+                    status
+                    coverImage { large }
+                    siteUrl
+                  }
+                }`;
+
+                const data = await fetchAniList(gqlQuery, { id: item.animeId });
+                const anime = data?.Media;
 
                 if (anime) {
                     const currentEps = anime.episodes || 0;
                     if (currentEps > item.lastEpisodes) {
                         const channel = await client.channels.fetch(item.channelId).catch(() => null);
                         if (channel) {
+                            const animeTitle = anime.title.english || anime.title.romaji;
                             const embed = new EmbedBuilder()
                                 .setTitle(`🚨 New Episode Released!`)
-                                .setDescription(`Episode **${currentEps}** of **[${anime.title}](${anime.url})** is now available! 🎉`)
-                                .setThumbnail(anime.images.jpg.image_url)
+                                .setDescription(`Episode **${currentEps}** of **[${animeTitle}](${anime.siteUrl})** is now available! 🎉`)
+                                .setThumbnail(anime.coverImage.large)
                                 .setColor('#e74c3c');
 
                             await channel.send({ embeds: [embed] });
@@ -246,7 +337,7 @@ async function checkUpdates() {
                         await item.save();
                     }
                 }
-                await new Promise(resolve => setTimeout(resolve, 2000));
+                await new Promise(resolve => setTimeout(resolve, 1000));
             } catch (err) {
                 console.error(`Error checking update for anime ID ${item.animeId}:`, err.message);
             }
