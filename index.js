@@ -1,10 +1,9 @@
 const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ActivityType, InteractionContextType, ApplicationIntegrationType } = require('discord.js');
-const axios = require('axios');
 const http = require('http');
 const mongoose = require('mongoose');
 require('dotenv').config();
 
-// Keep Render alive
+// Keep Render alive (Optional if you host on Render)
 const PORT = process.env.PORT || 3000;
 http.createServer((req, res) => {
     res.write("AniTracker is running!");
@@ -48,22 +47,30 @@ const client = new Client({
     ] 
 });
 
-const DEV_USER_ID = process.env.DEV_USER_ID || '1326815636395003966';
-const SUPPORT_SERVER_URL = process.env.SUPPORT_SERVER_URL || 'https://discord.gg/your-support-server';
+const DEV_USER_ID = process.env.DEV_USER_ID;
+const SUPPORT_SERVER_URL = process.env.SUPPORT_SERVER_URL || 'https://discord.gg/ZpQcRpZBrB';
 
+// Reliable fetch function using native Node.js fetch
 async function fetchAniList(query, variables) {
-    const response = await axios.post('https://graphql.anilist.co', {
-        query,
-        variables
-    }, {
+    const response = await fetch('https://graphql.anilist.co', {
+        method: 'POST',
         headers: {
             'Content-Type': 'application/json',
             'Accept': 'application/json',
-            'User-Agent': 'AniTrackerDiscordBot/1.0.0 (https://github.com)'
         },
-        timeout: 10000
+        body: JSON.stringify({ query, variables })
     });
-    return response.data.data;
+    
+    if (!response.ok) {
+        throw new Error(`AniList API status: ${response.status}`);
+    }
+
+    const data = await response.json();
+    if (data.errors) {
+        console.error('AniList GraphQL Errors:', data.errors);
+        throw new Error(data.errors[0].message);
+    }
+    return data.data;
 }
 
 // Global Command Helper Function to enable User Install everywhere
@@ -234,7 +241,6 @@ client.on('interactionCreate', async interaction => {
 
                 await interaction.editReply({ content: `🎯 Successfully started tracking **[${animeTitle}](${anime.siteUrl})** in this channel!` });
             } catch (err) {
-                console.error('Track Button Error:', err?.response?.data || err.message);
                 await interaction.editReply({ content: 'Failed to track via button.' });
             }
         }
@@ -272,9 +278,8 @@ client.on('interactionCreate', async interaction => {
                     lastEpisodes: anime.episodes || 0
                 });
 
-                await interaction.editReply({ content: `⭐ Added **[${animeTitle}](${anime.siteUrl})** to your personal favorites! You will receive direct messages (DMs) when new episodes arrive.` });
+                await interaction.editReply({ content: `⭐ Added **[${animeTitle}](${anime.siteUrl})** to your personal favorites!` });
             } catch (err) {
-                console.error('Favorite Button Error:', err?.response?.data || err.message);
                 await interaction.editReply({ content: 'Failed to add to personal favorites.' });
             }
         }
@@ -353,7 +358,6 @@ client.on('interactionCreate', async interaction => {
             const totalItems = parseInt(parts[4]);
 
             currentPage = direction === 'next' ? currentPage + 1 : currentPage - 1;
-
             const totalPages = Math.ceil(totalItems / 10);
             if (currentPage < 1 || currentPage > totalPages) return;
 
@@ -377,7 +381,8 @@ client.on('interactionCreate', async interaction => {
 
                 const list = pageItems.map((item, i) => {
                     const title = item.title.english || item.title.romaji || 'Unknown';
-                    return `**${startIndex + i + 1}.** [${title}](${item.siteUrl}) — ⭐ **${item.averageScore / 10}**`;
+                    const score = item.averageScore ? (item.averageScore / 10).toFixed(1) : 'N/A';
+                    return `**${startIndex + i + 1}.** [${title}](${item.siteUrl}) — ⭐ **${score}**`;
                 }).join('\n');
 
                 const embed = new EmbedBuilder()
@@ -467,19 +472,16 @@ client.on('interactionCreate', async interaction => {
     else if (commandName === 'schedule') {
         await interaction.deferReply({ ephemeral: true });
 
-        const today = new Date();
-        today.setUTCHours(0, 0, 0, 0);
-        const startOfDay = Math.floor(today.getTime() / 1000);
-        const endOfDay = startOfDay + 86400;
+        const now = Math.floor(Date.now() / 1000);
+        const dayLater = now + 86400;
 
         const gqlQuery = `
         query ($airingAt_greater: Int, $airingAt_lesser: Int) {
-          Page(page: 1, perPage: 20) {
+          Page(page: 1, perPage: 15) {
             airingSchedules(airingAt_greater: $airingAt_greater, airingAt_lesser: $airingAt_lesser, sort: TIME) {
               episode
               airingAt
               media {
-                id
                 title { romaji english }
                 siteUrl
               }
@@ -488,28 +490,26 @@ client.on('interactionCreate', async interaction => {
         }`;
 
         try {
-            const data = await fetchAniList(gqlQuery, { airingAt_greater: startOfDay, airingAt_lesser: endOfDay });
+            const data = await fetchAniList(gqlQuery, { airingAt_greater: now, airingAt_lesser: dayLater });
             const schedules = data?.Page?.airingSchedules;
 
             if (!schedules || schedules.length === 0) {
-                return interaction.editReply('📅 No anime episodes are scheduled to air today.');
+                return interaction.editReply('📅 No anime episodes are scheduled to air in the next 24 hours.');
             }
 
             const scheduleList = schedules.map(item => {
                 const title = item.media.title.english || item.media.title.romaji || 'Unknown Anime';
-                return `• **[${title}](${item.media.siteUrl})** — Ep **${item.episode}** at <t:${item.airingAt}:t>`;
+                return `• **[${title}](${item.media.siteUrl})** — Ep **${item.episode}** <t:${item.airingAt}:R>`;
             }).join('\n');
 
             const embed = new EmbedBuilder()
-                .setTitle('📅 Today\'s Anime Release Schedule')
+                .setTitle('📅 Upcoming Anime Release Schedule (Next 24 Hours)')
                 .setDescription(scheduleList)
-                .setColor('#121212')
-                .setFooter({ text: 'Times are shown in your local timezone • AniTracker' });
+                .setColor('#121212');
 
             await interaction.editReply({ embeds: [embed] });
         } catch (err) {
-            console.error('Schedule Command Error:', err);
-            await interaction.editReply('Failed to fetch today\'s airing schedule.');
+            await interaction.editReply('Failed to fetch airing schedule.');
         }
     }
 
@@ -540,7 +540,8 @@ client.on('interactionCreate', async interaction => {
 
             const list = pageItems.map((item, i) => {
                 const title = item.title.english || item.title.romaji || 'Unknown';
-                return `**${i + 1}.** [${title}](${item.siteUrl}) — ⭐ **${item.averageScore / 10}**`;
+                const score = item.averageScore ? (item.averageScore / 10).toFixed(1) : 'N/A';
+                return `**${i + 1}.** [${title}](${item.siteUrl}) — ⭐ **${score}**`;
             }).join('\n');
 
             const embed = new EmbedBuilder()
@@ -566,7 +567,6 @@ client.on('interactionCreate', async interaction => {
 
             await interaction.editReply({ embeds: [embed], components: limit > 10 ? [row] : [] });
         } catch (err) {
-            console.error('Top Command Error:', err);
             await interaction.editReply('Failed to fetch top rankings.');
         }
     }
@@ -602,6 +602,7 @@ client.on('interactionCreate', async interaction => {
             const anime = mediaList[Math.floor(Math.random() * mediaList.length)];
             const title = anime.title.english || anime.title.romaji || 'Anime Title';
             const cleanDesc = anime.description ? anime.description.replace(/<[^>]*>?/gm, '').substring(0, 300) + '...' : 'No synopsis available.';
+            const score = anime.averageScore ? (anime.averageScore / 10).toFixed(1) : 'N/A';
 
             const embed = new EmbedBuilder()
                 .setTitle(`🎭 ${genreChoice} Ongoing Recommendation: ${title}`)
@@ -610,7 +611,7 @@ client.on('interactionCreate', async interaction => {
                 .addFields(
                     { name: 'Episodes', value: `${anime.episodes ?? 'N/A'}`, inline: true },
                     { name: 'Status', value: anime.status || 'N/A', inline: true },
-                    { name: 'Score', value: anime.averageScore ? `${anime.averageScore} / 100` : 'N/A', inline: true }
+                    { name: 'Score', value: `⭐ ${score}`, inline: true }
                 )
                 .setDescription(cleanDesc)
                 .setColor('#121212');
@@ -629,7 +630,6 @@ client.on('interactionCreate', async interaction => {
 
             await interaction.editReply({ embeds: [embed], components: [row] });
         } catch (err) {
-            console.error('Genre Command Error:', err);
             await interaction.editReply('Failed to fetch genre recommendations.');
         }
     }
@@ -646,12 +646,6 @@ client.on('interactionCreate', async interaction => {
             description(asHtml: false)
             image { large }
             siteUrl
-            media (sort: POPULARITY_DESC, perPage: 1) {
-              nodes {
-                title { romaji english }
-                siteUrl
-              }
-            }
           }
         }`;
 
@@ -661,15 +655,12 @@ client.on('interactionCreate', async interaction => {
 
             if (!char) return interaction.editReply('Character not found!');
 
-            const mainAnime = char.media?.nodes?.[0];
-            const animeTitle = mainAnime ? (mainAnime.title.english || mainAnime.title.romaji) : 'N/A';
             const cleanDesc = char.description ? char.description.replace(/<[^>]*>?/gm, '').substring(0, 350) + '...' : 'No description available.';
 
             const embed = new EmbedBuilder()
                 .setTitle(char.name.full + (char.name.native ? ` (${char.name.native})` : ''))
                 .setURL(char.siteUrl)
                 .setThumbnail(char.image?.large || null)
-                .addFields({ name: 'Featured Anime', value: mainAnime ? `[${animeTitle}](${mainAnime.siteUrl})` : 'N/A' })
                 .setDescription(cleanDesc)
                 .setColor('#121212');
 
@@ -687,7 +678,6 @@ client.on('interactionCreate', async interaction => {
 
             await interaction.editReply({ embeds: [embed], components: [row] });
         } catch (err) {
-            console.error('Character Command Error:', err);
             await interaction.editReply('Failed to fetch character details.');
         }
     }
@@ -713,7 +703,6 @@ client.on('interactionCreate', async interaction => {
 
             await interaction.editReply({ content: '✅ Your report has been sent directly to the developer team! Thank you.' });
         } catch (err) {
-            console.error('Report Error:', err);
             await interaction.editReply({ content: 'Failed to send report.' });
         }
     }
@@ -744,6 +733,7 @@ client.on('interactionCreate', async interaction => {
 
             const title = anime.title.english || anime.title.romaji || searchQuery;
             const cleanDesc = anime.description ? anime.description.replace(/<[^>]*>?/gm, '').substring(0, 300) + '...' : 'No synopsis available.';
+            const score = anime.averageScore ? (anime.averageScore / 10).toFixed(1) : 'N/A';
 
             const embed = new EmbedBuilder()
                 .setTitle(title)
@@ -752,7 +742,7 @@ client.on('interactionCreate', async interaction => {
                 .addFields(
                     { name: 'Episodes', value: `${anime.episodes ?? 'N/A'}`, inline: true },
                     { name: 'Status', value: anime.status || 'N/A', inline: true },
-                    { name: 'Score', value: anime.averageScore ? `${anime.averageScore} / 100` : 'N/A', inline: true }
+                    { name: 'Score', value: `⭐ ${score}`, inline: true }
                 )
                 .setDescription(cleanDesc)
                 .setColor('#121212');
@@ -771,7 +761,6 @@ client.on('interactionCreate', async interaction => {
 
             await interaction.editReply({ embeds: [embed], components: [row] });
         } catch (err) {
-            console.error('Anime Fetch Error:', err);
             await interaction.editReply('Failed to fetch anime data.');
         }
     }
@@ -802,6 +791,7 @@ client.on('interactionCreate', async interaction => {
 
             const title = manga.title.english || manga.title.romaji || searchQuery;
             const cleanDesc = manga.description ? manga.description.replace(/<[^>]*>?/gm, '').substring(0, 300) + '...' : 'No synopsis available.';
+            const score = manga.averageScore ? (manga.averageScore / 10).toFixed(1) : 'N/A';
 
             const embed = new EmbedBuilder()
                 .setTitle(title)
@@ -810,14 +800,13 @@ client.on('interactionCreate', async interaction => {
                 .addFields(
                     { name: 'Chapters', value: `${manga.chapters ?? 'N/A'}`, inline: true },
                     { name: 'Status', value: manga.status || 'N/A', inline: true },
-                    { name: 'Score', value: manga.averageScore ? `${manga.averageScore} / 100` : 'N/A', inline: true }
+                    { name: 'Score', value: `⭐ ${score}`, inline: true }
                 )
                 .setDescription(cleanDesc)
                 .setColor('#121212');
 
             await interaction.editReply({ embeds: [embed] });
         } catch (err) {
-            console.error('Manga Command Error:', err);
             await interaction.editReply('Failed to fetch manga data.');
         }
     }
@@ -1009,7 +998,6 @@ client.on('interactionCreate', async interaction => {
 // Automated Episode Checker Function
 async function checkUpdates() {
     try {
-        // 1. Channel Alerts
         const tracked = await TrackedItem.find({});
         for (const item of tracked) {
             try {
@@ -1052,11 +1040,10 @@ async function checkUpdates() {
                     }
                 }
             } catch (err) {
-                console.error(`Error checking channel tracker for anime ID ${item.animeId}:`, err.message);
+                console.error(`Error checking channel tracker for anime ID ${item.animeId}`);
             }
         }
 
-        // 2. Personal DM Alerts
         const favorites = await FavoriteItem.find({});
         for (const item of favorites) {
             try {
@@ -1097,11 +1084,11 @@ async function checkUpdates() {
                     }
                 }
             } catch (err) {
-                console.error(`Error checking DM favorite for anime ID ${item.animeId}:`, err.message);
+                console.error(`Error checking DM favorite for anime ID ${item.animeId}`);
             }
         }
     } catch (err) {
-        console.error('Error in background checkUpdates loop:', err);
+        console.error('Error in background checkUpdates loop');
     }
 }
 
