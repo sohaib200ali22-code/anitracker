@@ -67,11 +67,14 @@ client.once('ready', async () => {
     console.log(`Logged in as ${client.user.tag}!`);
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
     try {
+        console.log('Started refreshing application (/) commands.');
+        
         await rest.put(
             Routes.applicationCommands(client.user.id),
             { body: commands }
         );
-        console.log('Slash commands registered successfully!');
+        
+        console.log('Successfully reloaded application (/) commands!');
     } catch (error) {
         console.error('Error registering commands:', error);
     }
