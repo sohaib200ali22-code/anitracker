@@ -13,7 +13,7 @@ http.createServer((req, res) => {
     console.log(`Server listening on port ${PORT}`);
 });
 
-// Self-ping to keep Render awake (Replace with your actual Render URL if available, or pings local)
+// Self-ping to keep Render awake
 setInterval(() => {
     http.get(`http://localhost:${PORT}`, (res) => {
         // Keeps the process active
@@ -51,10 +51,10 @@ const client = new Client({
     ] 
 });
 
-// Developer User ID for direct DM reports (Set this in your .env as DEV_USER_ID or place ID here)
-const DEV_USER_ID = process.env.DEV_USER_ID || 'YOUR_DISCORD_USER_ID';
+// Developer User ID for direct DM reports
+const DEV_USER_ID = process.env.DEV_USER_ID || '1326815636395003966';
 
-// AniList API GraphQL Helper Function
+// AniList API GraphQL Helper Function with Custom User-Agent to prevent blocking
 async function fetchAniList(query, variables) {
     const response = await axios.post('https://graphql.anilist.co', {
         query,
@@ -62,7 +62,8 @@ async function fetchAniList(query, variables) {
     }, {
         headers: {
             'Content-Type': 'application/json',
-            'Accept': 'application/json'
+            'Accept': 'application/json',
+            'User-Agent': 'AniTrackerDiscordBot/1.0.0 (https://github.com)'
         },
         timeout: 10000
     });
@@ -216,6 +217,7 @@ client.on('interactionCreate', async interaction => {
 
                 await interaction.editReply({ content: `🎯 Successfully started tracking **[${animeTitle}](${anime.siteUrl})** in this channel!` });
             } catch (err) {
+                console.error('Track Button Error:', err?.response?.data || err.message);
                 await interaction.editReply({ content: 'Failed to track via button.' });
             }
         }
@@ -255,6 +257,7 @@ client.on('interactionCreate', async interaction => {
 
                 await interaction.editReply({ content: `⭐ Added **[${animeTitle}](${anime.siteUrl})** to your personal favorites! You will receive direct messages (DMs) when new episodes arrive.` });
             } catch (err) {
+                console.error('Favorite Button Error:', err?.response?.data || err.message);
                 await interaction.editReply({ content: 'Failed to add to personal favorites.' });
             }
         }
@@ -288,7 +291,6 @@ client.on('interactionCreate', async interaction => {
         const reportMsg = interaction.options.getString('message');
 
         try {
-            // Find Developer User
             const devUser = await client.users.fetch(DEV_USER_ID).catch(() => null);
 
             const devEmbed = new EmbedBuilder()
@@ -307,6 +309,7 @@ client.on('interactionCreate', async interaction => {
 
             await interaction.editReply({ content: '✅ Your report has been sent directly to the developer team! Thank you for helping us improve.' });
         } catch (err) {
+            console.error('Report Error:', err);
             await interaction.editReply({ content: 'Failed to send report. Please try again later.' });
         }
     }
@@ -348,6 +351,7 @@ client.on('interactionCreate', async interaction => {
 
             await interaction.editReply(`⭐ Added **[${animeTitle}](${anime.siteUrl})** to your personal favorites! You will receive DMs when new episodes drop.`);
         } catch (err) {
+            console.error('Favorite Command Error:', err?.response?.data || err.message);
             await interaction.editReply('Failed to add to personal favorites.');
         }
     }
@@ -379,6 +383,7 @@ client.on('interactionCreate', async interaction => {
 
             await interaction.editReply(`🗑️ Removed **${animeTitle}** from your personal favorites.`);
         } catch (err) {
+            console.error('Unfavorite Command Error:', err?.response?.data || err.message);
             await interaction.editReply('Failed to remove from favorites.');
         }
     }
@@ -400,6 +405,7 @@ client.on('interactionCreate', async interaction => {
 
             await interaction.editReply({ embeds: [embed] });
         } catch (err) {
+            console.error('MyFavorites Command Error:', err);
             await interaction.editReply('Failed to fetch favorites list.');
         }
     }
@@ -428,7 +434,7 @@ client.on('interactionCreate', async interaction => {
         await interaction.reply({ embeds: [embed], ephemeral: true });
     }
 
-    // Anime Command (Private)
+    // Anime Command (Private & Optimized)
     else if (commandName === 'anime') {
         await interaction.deferReply({ ephemeral: true });
         const searchQuery = interaction.options.getString('title');
@@ -451,7 +457,7 @@ client.on('interactionCreate', async interaction => {
             const data = await fetchAniList(gqlQuery, { search: searchQuery });
             const anime = data?.Media;
 
-            if (!anime) return interaction.editReply('Anime not found!');
+            if (!anime) return interaction.editReply('Anime not found! Please check the title spelling.');
 
             const title = (anime.title && (anime.title.english || anime.title.romaji)) || searchQuery;
             const cleanDesc = anime.description ? anime.description.replace(/<[^>]*>?/gm, '').substring(0, 300) + '...' : 'No synopsis available.';
@@ -482,7 +488,8 @@ client.on('interactionCreate', async interaction => {
 
             await interaction.editReply({ embeds: [embed], components: [row] });
         } catch (err) {
-            await interaction.editReply('Failed to fetch anime data.');
+            console.error('Anime Fetch Error:', err?.response?.data || err.message);
+            await interaction.editReply('Failed to fetch anime data. Please try again in a few seconds.');
         }
     }
 
@@ -528,6 +535,7 @@ client.on('interactionCreate', async interaction => {
 
             await interaction.editReply({ embeds: [embed] });
         } catch (err) {
+            console.error('Manga Command Error:', err?.response?.data || err.message);
             await interaction.editReply('Failed to fetch manga data.');
         }
     }
@@ -591,6 +599,7 @@ client.on('interactionCreate', async interaction => {
 
             await interaction.editReply({ embeds: [embed], components: [row] });
         } catch (err) {
+            console.error('Genre Command Error:', err?.response?.data || err.message);
             await interaction.editReply('Failed to fetch genre recommendations.');
         }
     }
@@ -649,7 +658,7 @@ client.on('interactionCreate', async interaction => {
 
             await interaction.editReply({ embeds: [embed] });
         } catch (err) {
-            console.error('Track Command Error:', err);
+            console.error('Track Command Error:', err?.response?.data || err.message);
             await interaction.editReply(`Failed to track this anime. Details: ${err.message}`);
         }
     }
@@ -682,6 +691,7 @@ client.on('interactionCreate', async interaction => {
 
             await interaction.editReply(`🚨 Stopped tracking **${animeTitle}**.`);
         } catch (err) {
+            console.error('Untrack Command Error:', err?.response?.data || err.message);
             await interaction.editReply('Failed to untrack.');
         }
     }
@@ -703,6 +713,7 @@ client.on('interactionCreate', async interaction => {
 
             await interaction.editReply({ embeds: [embed] });
         } catch (err) {
+            console.error('MyTracked Command Error:', err);
             await interaction.editReply('Failed to fetch tracked list.');
         }
     }
