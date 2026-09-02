@@ -183,7 +183,7 @@ client.on('interactionCreate', async interaction => {
     if (commandName === 'help') {
         const embed = new EmbedBuilder()
             .setTitle('🤖 AniTracker - Commands Guide')
-            .setDescription('Welcome to **AniTracker**! Here is the list of all available slash commands:')
+            .setDescription('Welcome to **anitracker**! Here is the list of all available slash commands:')
             .addFields(
                 { name: '🔍 `/anime <title>`', value: 'Search for anime details & quick track with a button.', inline: false },
                 { name: '📖 `/manga <title>`', value: 'Search for manga details.', inline: false },
