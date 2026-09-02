@@ -222,12 +222,13 @@ client.on('interactionCreate', async interaction => {
                 return await interaction.editReply(`**${animeTitle}** is already being tracked in this server!`);
             }
 
+            // تم تعديلها هنا عشان الأنميات المنتهية أو اللي مالهاش حلقات محددة تتسجل من غير مشاكل
             await TrackedItem.create({
                 guildId: interaction.guildId,
                 channelId: interaction.channelId,
                 animeId: anime.id,
                 animeTitle: animeTitle,
-                lastEpisodes: anime.episodes || 0,
+                lastEpisodes: anime.episodes || 9999,
                 lastStatus: anime.status
             });
 
