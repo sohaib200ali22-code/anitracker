@@ -5,17 +5,27 @@ const mongoose = require('mongoose');
 require('dotenv').config();
 
 // Web server workaround to keep Render alive 24/7
+const PORT = process.env.PORT || 3000;
 http.createServer((req, res) => {
     res.write("AniTracker is running!");
     res.end();
-}).listen(process.env.PORT || 3000);
+}).listen(PORT, () => {
+    console.log(`Server listening on port ${PORT}`);
+});
+
+// Self-ping to keep Render awake (Replace with your actual Render URL if available, or pings local)
+setInterval(() => {
+    http.get(`http://localhost:${PORT}`, (res) => {
+        // Keeps the process active
+    }).on('error', (err) => {});
+}, 5 * 60 * 1000);
 
 // Connect to MongoDB
 mongoose.connect(process.env.MONGODB_URI)
     .then(() => console.log('Connected to MongoDB Atlas!'))
     .catch(err => console.error('MongoDB connection error:', err));
 
-// MongoDB Schema for Server Tracked Items
+// MongoDB Schemas
 const TrackSchema = new mongoose.Schema({
     guildId: String,
     channelId: String,
@@ -26,7 +36,6 @@ const TrackSchema = new mongoose.Schema({
 });
 const TrackedItem = mongoose.model('TrackedItem', TrackSchema);
 
-// MongoDB Schema for Personal Favorites (DM Alerts)
 const FavoriteSchema = new mongoose.Schema({
     userId: String,
     animeId: Number,
@@ -41,6 +50,9 @@ const client = new Client({
         GatewayIntentBits.GuildPresences
     ] 
 });
+
+// Developer User ID for direct DM reports (Set this in your .env as DEV_USER_ID or place ID here)
+const DEV_USER_ID = process.env.DEV_USER_ID || 'YOUR_DISCORD_USER_ID';
 
 // AniList API GraphQL Helper Function
 async function fetchAniList(query, variables) {
@@ -57,11 +69,18 @@ async function fetchAniList(query, variables) {
     return response.data.data;
 }
 
-// Register Slash Commands (Start Command is at the Top)
+// Register Slash Commands
 const commands = [
     new SlashCommandBuilder()
         .setName('start')
         .setDescription('Welcome guide, basic features, and support contact'),
+    new SlashCommandBuilder()
+        .setName('report')
+        .setDescription('Send a direct bug report or suggestion to the developer')
+        .addStringOption(option => 
+            option.setName('message')
+                .setDescription('Describe the issue or suggestion')
+                .setRequired(true)),
     new SlashCommandBuilder()
         .setName('favorite')
         .setDescription('Add an anime to your personal favorites (Receive DM notifications)')
@@ -246,24 +265,53 @@ client.on('interactionCreate', async interaction => {
 
     const { commandName } = interaction;
 
-    // 🚀 Start Command (Positioned Top Priority)
+    // Start Command (Private Message)
     if (commandName === 'start') {
         const embed = new EmbedBuilder()
             .setTitle('🚀 Welcome to AniTracker!')
             .setDescription('Your ultimate Discord companion for anime search, recommendations, and automatic episode notifications!')
             .addFields(
                 { name: '✨ What can AniTracker do?', value: '• Search Anime & Manga details instantly.\n• Track anime in server channels for group alerts.\n• Add anime to personal favorites for **Direct Message (DM)** updates.\n• Find random high-rated anime by category/genre.' },
-                { name: '📚 Quick Start Commands', value: '`/anime` - Search any anime\n`/genre` - Discover by genre\n`/track` - Track in channel\n`/favorite <title>` - Track in DMs\n`/help` - Show full commands list' },
-                { name: '🐛 Report a Problem or Request Features', value: 'If you encounter any bugs, issues, or have suggestions, please contact the developer directly:\n👤 **Discord User:** `_h8rtless_`' }
+                { name: '📚 Quick Start Commands', value: '`/anime` - Search any anime\n`/genre` - Discover by genre\n`/track` - Track in channel\n`/favorite <title>` - Track in DMs\n`/report <message>` - Report bugs to developer\n`/help` - Show full commands list' },
+                { name: '🐛 Report a Problem or Request Features', value: 'Use `/report <message>` to directly contact the developer team!\n👤 **Developer Tag:** `_h8rtless_`' }
             )
             .setColor('#2ecc71')
             .setThumbnail(client.user.displayAvatarURL())
             .setFooter({ text: 'AniTracker • Developed for Anime Lovers' });
 
-        await interaction.reply({ embeds: [embed] });
+        await interaction.reply({ embeds: [embed], ephemeral: true });
     }
 
-    // Favorite Command (Now requires title search)
+    // Direct Report Command to Developer DM
+    else if (commandName === 'report') {
+        await interaction.deferReply({ ephemeral: true });
+        const reportMsg = interaction.options.getString('message');
+
+        try {
+            // Find Developer User
+            const devUser = await client.users.fetch(DEV_USER_ID).catch(() => null);
+
+            const devEmbed = new EmbedBuilder()
+                .setTitle('📥 New Report Received!')
+                .addFields(
+                    { name: '👤 From User', value: `${interaction.user.tag} (${interaction.user.id})`, inline: true },
+                    { name: '🏰 Server', value: interaction.guild ? interaction.guild.name : 'Direct Message', inline: true },
+                    { name: '📝 Report Message', value: reportMsg }
+                )
+                .setColor('#e74c3c')
+                .setTimestamp();
+
+            if (devUser) {
+                await devUser.send({ embeds: [devEmbed] });
+            }
+
+            await interaction.editReply({ content: '✅ Your report has been sent directly to the developer team! Thank you for helping us improve.' });
+        } catch (err) {
+            await interaction.editReply({ content: 'Failed to send report. Please try again later.' });
+        }
+    }
+
+    // Favorite Commands (Private)
     else if (commandName === 'favorite') {
         await interaction.deferReply({ ephemeral: true });
         const searchQuery = interaction.options.getString('title');
@@ -356,13 +404,14 @@ client.on('interactionCreate', async interaction => {
         }
     }
 
-    // Help Command
+    // Help Command (Private)
     else if (commandName === 'help') {
         const embed = new EmbedBuilder()
             .setTitle('🤖 AniTracker - Commands Guide')
             .setDescription('Here is the full list of available slash commands:')
             .addFields(
                 { name: '🚀 `/start`', value: 'Welcome guide and bug report contact.', inline: false },
+                { name: '📩 `/report <message>`', value: 'Send direct report/issue to developer.', inline: false },
                 { name: '⭐ `/favorite <title>`', value: 'Add anime to personal favorites (DM notifications).', inline: false },
                 { name: '❌ `/unfavorite <title>`', value: 'Remove anime from personal favorites.', inline: false },
                 { name: '💖 `/myfavorites`', value: 'Show your personal favorite anime list.', inline: false },
@@ -374,14 +423,14 @@ client.on('interactionCreate', async interaction => {
                 { name: '📌 `/mytracked`', value: 'Show all anime currently tracked in this server.', inline: false }
             )
             .setColor('#9b59b6')
-            .setFooter({ text: 'Report bugs to _h8rtless_' });
+            .setFooter({ text: 'Report bugs with /report' });
 
-        await interaction.reply({ embeds: [embed] });
+        await interaction.reply({ embeds: [embed], ephemeral: true });
     }
 
-    // Anime Command
+    // Anime Command (Private)
     else if (commandName === 'anime') {
-        await interaction.deferReply();
+        await interaction.deferReply({ ephemeral: true });
         const searchQuery = interaction.options.getString('title');
         
         const gqlQuery = `
@@ -437,9 +486,9 @@ client.on('interactionCreate', async interaction => {
         }
     }
 
-    // Manga Command
+    // Manga Command (Private)
     else if (commandName === 'manga') {
-        await interaction.deferReply();
+        await interaction.deferReply({ ephemeral: true });
         const searchQuery = interaction.options.getString('title');
 
         const gqlQuery = `
@@ -483,9 +532,9 @@ client.on('interactionCreate', async interaction => {
         }
     }
 
-    // Genre Command
+    // Genre Command (Private)
     else if (commandName === 'genre') {
-        await interaction.deferReply();
+        await interaction.deferReply({ ephemeral: true });
         const genreChoice = interaction.options.getString('category');
 
         const gqlQuery = `
@@ -546,9 +595,9 @@ client.on('interactionCreate', async interaction => {
         }
     }
 
-    // Track Command
+    // Track Command (Private)
     else if (commandName === 'track') {
-        await interaction.deferReply();
+        await interaction.deferReply({ ephemeral: true });
         const searchQuery = interaction.options.getString('title');
 
         const gqlQuery = `
@@ -605,9 +654,9 @@ client.on('interactionCreate', async interaction => {
         }
     }
 
-    // Untrack Command
+    // Untrack Command (Private)
     else if (commandName === 'untrack') {
-        await interaction.deferReply();
+        await interaction.deferReply({ ephemeral: true });
         const searchQuery = interaction.options.getString('title');
 
         const gqlQuery = `
@@ -637,9 +686,9 @@ client.on('interactionCreate', async interaction => {
         }
     }
 
-    // List Tracked Command
+    // List Tracked Command (Private)
     else if (commandName === 'mytracked') {
-        await interaction.deferReply();
+        await interaction.deferReply({ ephemeral: true });
         try {
             const items = await TrackedItem.find({ guildId: interaction.guildId });
             if (items.length === 0) {
