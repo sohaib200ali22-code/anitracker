@@ -93,7 +93,7 @@ client.on('interactionCreate', async interaction => {
         const query = interaction.options.getString('title');
         try {
             const res = await axios.get(`https://api.jikan.moe/v4/anime?q=${encodeURIComponent(query)}&limit=1`);
-            const anime = res.data.data[0];
+            const anime = res.data.data?.[0];
             if (!anime) return interaction.editReply('Anime not found!');
 
             const embed = new EmbedBuilder()
@@ -119,7 +119,7 @@ client.on('interactionCreate', async interaction => {
         const query = interaction.options.getString('title');
         try {
             const res = await axios.get(`https://api.jikan.moe/v4/manga?q=${encodeURIComponent(query)}&limit=1`);
-            const manga = res.data.data[0];
+            const manga = res.data.data?.[0];
             if (!manga) return interaction.editReply('Manga not found!');
 
             const embed = new EmbedBuilder()
@@ -145,12 +145,15 @@ client.on('interactionCreate', async interaction => {
         const query = interaction.options.getString('title');
         try {
             const res = await axios.get(`https://api.jikan.moe/v4/anime?q=${encodeURIComponent(query)}&limit=1`);
-            const anime = res.data.data[0];
-            if (!anime) return interaction.editReply('Anime not found!');
+            const anime = res.data.data?.[0];
+            
+            if (!anime) {
+                return await interaction.editReply('Anime not found!');
+            }
 
             const existing = await TrackedItem.findOne({ guildId: interaction.guildId, animeId: anime.mal_id });
             if (existing) {
-                return interaction.editReply(`**${anime.title}** is already being tracked in this server!`);
+                return await interaction.editReply(`**${anime.title}** is already being tracked in this server!`);
             }
 
             await TrackedItem.create({
@@ -170,7 +173,8 @@ client.on('interactionCreate', async interaction => {
 
             await interaction.editReply({ embeds: [embed] });
         } catch (err) {
-            await interaction.editReply('Failed to track this anime.');
+            console.error('Track Command Error:', err);
+            await interaction.editReply(`Failed to track this anime. Details: ${err.message}`);
         }
     }
 
@@ -179,7 +183,7 @@ client.on('interactionCreate', async interaction => {
         const query = interaction.options.getString('title');
         try {
             const res = await axios.get(`https://api.jikan.moe/v4/anime?q=${encodeURIComponent(query)}&limit=1`);
-            const anime = res.data.data[0];
+            const anime = res.data.data?.[0];
             if (!anime) return interaction.editReply('Anime not found!');
 
             const deleted = await TrackedItem.findOneAndDelete({ guildId: interaction.guildId, animeId: anime.mal_id });
