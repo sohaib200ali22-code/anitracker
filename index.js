@@ -145,10 +145,6 @@ const commands = [
     new SlashCommandBuilder()
         .setName('track')
         .setDescription('Track an anime for new episode updates in this channel')
-        // FIX: block this command from being usable in DMs at the Discord level —
-        // it only makes sense inside a server channel. Discord will hide/refuse
-        // the command in DMs before it ever reaches our code.
-        .setDMPermission(false)
         .addStringOption(option =>
             option.setName('title')
                 .setDescription('Anime title to track')
@@ -162,7 +158,12 @@ const commands = [
                 .setRequired(true)),
     new SlashCommandBuilder()
         .setName('mytracked')
-        .setDescription('List all tracked anime in this server')
+        .setDescription('List all tracked anime in this server'),
+    // NEW: dev-only command to manually trigger the 30-min episode check on demand,
+    // so new-episode alerts can be tested without waiting for the real interval.
+    new SlashCommandBuilder()
+        .setName('testalert')
+        .setDescription('(Dev only) Manually run the episode-alert check right now')
 ].map(command => command.toJSON());
 
 client.once('ready', async () => {
@@ -457,10 +458,9 @@ client.on('interactionCreate', async interaction => {
                 .replace(/~!/g, '||')
                 .replace(/!~/g, '||')
                 .replace(/<[^>]*>/gm, '') : 'No description available.';
-            // FIX: no longer truncating to 350 chars — user wants the full character
-            // bio in /character search results. Only capped at Discord's hard embed
-            // description limit (4096) as a safety net, not a real truncation.
-            if (cleanDesc.length > 4000) cleanDesc = cleanDesc.substring(0, 4000) + '...';
+            // FIX: reverted to a short description in the main /character result —
+            // the full/long bio now only shows up when the user presses "More Info".
+            if (cleanDesc.length > 350) cleanDesc = cleanDesc.substring(0, 350) + '...';
 
             const embed = new EmbedBuilder()
                 .setTitle(`🎭 ${nameFull}${nameNative}`)
@@ -803,13 +803,11 @@ client.on('interactionCreate', async interaction => {
 
     // 🎯 Track Command
     else if (commandName === 'track') {
-        // FIX: defense-in-depth guard — even though setDMPermission(false) should
-        // stop this from being invoked in DMs, this check makes sure that if it
-        // somehow does fire outside a server (no guildId), we reject it cleanly
-        // instead of crashing on interaction.guildId being null later on.
+        // FIX: only a runtime guard now (no more setDMPermission) — this shows our
+        // own friendly message instead of Discord's default scary red error.
         if (!interaction.guildId) {
             return interaction.reply({
-                content: '🚫 This command only works inside a server channel, not in DMs.',
+                content: '🎯 `/track` works inside a server channel! Want personal alerts instead? Try `/favorite <title>` — you\'ll get a DM whenever a new episode drops.',
                 ephemeral: true
             });
         }
@@ -921,6 +919,22 @@ client.on('interactionCreate', async interaction => {
             await interaction.editReply({ embeds: [embed] });
         } catch (err) {
             await interaction.editReply('Failed to fetch tracked list.');
+        }
+    }
+
+    // 🧪 Test Alert Command (Dev only)
+    else if (commandName === 'testalert') {
+        if (interaction.user.id !== process.env.DEV_USER_ID) {
+            return interaction.reply({ content: '🚫 This command is for the bot developer only.', ephemeral: true });
+        }
+
+        await interaction.deferReply({ ephemeral: true });
+        try {
+            await checkUpdates();
+            await interaction.editReply('✅ Alert check complete — go check your tracked channels and DMs for any new-episode alerts.');
+        } catch (err) {
+            console.error('testalert command error:', err);
+            await interaction.editReply('❌ checkUpdates() threw an error — check the logs.');
         }
     }
 });
