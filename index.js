@@ -304,14 +304,29 @@ client.on('interactionCreate', async interaction => {
             description(asHtml: false)
             siteUrl
             favourites
-            media (perPage: 1, sort: POPULARITY_DESC) {
-              nodes {
-                title { romaji english }
+            gender
+            age
+            dateOfBirth { year month day }
+            media (perPage: 25, sort: POPULARITY_DESC) {
+              edges {
+                voiceActors (language: JAPANESE) {
+                  id
+                  name { full native }
+                  siteUrl
+                }
+                node {
+                  id
+                  title { romaji english }
+                  season
+                  seasonYear
+                  type
+                }
               }
             }
           }
         }`;
 
+        
         try {
             const data = await fetchAniList(gqlQuery, { search: characterName });
             const char = data?.Character;
@@ -324,7 +339,10 @@ client.on('interactionCreate', async interaction => {
             const nameNative = char.name?.native ? ` (${char.name.native})` : '';
             const animeSource = char.media?.nodes?.[0]?.title?.english || char.media?.nodes?.[0]?.title?.romaji || 'Unknown Anime';
             
-            let cleanDesc = char.description ? char.description.replace(/<[^>]*>?/gm, '') : 'No description available.';
+            let cleanDesc = char.description ? char.description
+    .replace(/~!/g, '||')
+    .replace(/!~/g, '||')
+    .replace(/<[^>]*>/gm, '') : 'No description available.';
             if (cleanDesc.length > 350) cleanDesc = cleanDesc.substring(0, 350) + '...';
 
             const embed = new EmbedBuilder()
@@ -345,7 +363,20 @@ client.on('interactionCreate', async interaction => {
                 .setStyle(ButtonStyle.Link)
                 .setURL(pinterestUrl);
 
-            const row = new ActionRowBuilder().addComponents(fanartBtn);
+            const row = new ActionRowBuilder
+// زرار More Info التفاعلي
+            const infoBtn = new ButtonBuilder()
+                .setCustomId(`char_info_${char.id}`)
+                .setLabel('📖 More Info')
+                .setStyle(ButtonStyle.Primary);
+
+            const pinterestUrl = `https://www.pinterest.com/search/pins/?q=${encodeURIComponent(nameFull + ' anime fanart')}`;
+            const fanartBtn = new ButtonBuilder()
+                .setLabel('🎨 Fanart')
+                .setStyle(ButtonStyle.Link)
+                .setURL(pinterestUrl);
+
+            const row = new ActionRowBuilder().addComponents(infoBtn, fanartBtn);
 
             await interaction.editReply({ embeds: [embed], components: [row] });
 
