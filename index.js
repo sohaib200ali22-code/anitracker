@@ -57,7 +57,7 @@ async function fetchAniList(query, variables) {
     return response.data.data;
 }
 
-// Register Slash Commands (Start Command is at the Top)
+// Register Slash Commands
 const commands = [
     new SlashCommandBuilder()
         .setName('start')
@@ -95,6 +95,13 @@ const commands = [
         .addStringOption(option => 
             option.setName('title')
                 .setDescription('Manga title')
+                .setRequired(true)),
+    new SlashCommandBuilder()
+        .setName('character')
+        .setDescription('Search for an anime character')
+        .addStringOption(option => 
+            option.setName('name')
+                .setDescription('Character name')
                 .setRequired(true)),
     new SlashCommandBuilder()
         .setName('genre')
@@ -156,7 +163,7 @@ client.once('ready', async () => {
 });
 
 client.on('interactionCreate', async interaction => {
-    // Handle Interactive Buttons
+    // 🔘 Handle Interactive Buttons
     if (interaction.isButton()) {
         if (interaction.customId.startsWith('track_btn_')) {
             await interaction.deferReply({ ephemeral: true });
@@ -239,6 +246,33 @@ client.on('interactionCreate', async interaction => {
                 await interaction.editReply({ content: 'Failed to add to personal favorites.' });
             }
         }
+        else if (interaction.customId.startsWith('char_info_')) {
+            await interaction.deferReply({ ephemeral: true });
+            const malId = interaction.customId.replace('char_info_', '');
+
+            try {
+                const res = await axios.get(`https://api.jikan.moe/v4/characters/${malId}/full`);
+                const char = res.data?.data;
+
+                if (!char) return interaction.editReply('Character details not found.');
+
+                const nicknames = char.nicknames?.length > 0 ? char.nicknames.join(', ') : 'None';
+                const favorites = char.favorites ? char.favorites.toLocaleString() : '0';
+
+                const embed = new EmbedBuilder()
+                    .setTitle(`ℹ️ Detailed Info: ${char.name}`)
+                    .addFields(
+                        { name: 'Kanji Name', value: char.name_kanji || 'N/A', inline: true },
+                        { name: 'Nicknames', value: nicknames, inline: true },
+                        { name: 'Favorites on MAL', value: `❤️ ${favorites}`, inline: true }
+                    )
+                    .setColor('#8e44ad');
+
+                await interaction.editReply({ embeds: [embed] });
+            } catch (err) {
+                await interaction.editReply('Could not fetch additional details right now.');
+            }
+        }
         return;
     }
 
@@ -246,7 +280,7 @@ client.on('interactionCreate', async interaction => {
 
     const { commandName } = interaction;
 
-  // 🚀 Start Command
+    // 🚀 Start Command
     if (commandName === 'start') {
         const embed = new EmbedBuilder()
             .setTitle('🚀 Welcome to AniTracker!')
@@ -263,21 +297,17 @@ client.on('interactionCreate', async interaction => {
         const supportBtn = new ButtonBuilder()
             .setLabel('💬 Support Server')
             .setStyle(ButtonStyle.Link)
-            .setURL('https://discord.gg/YOUR_INVITE_CODE'); // استبدل الرابط برابط سيرفرك
+            .setURL('https://discord.gg/H4Af2y4RD8');
 
         const row = new ActionRowBuilder().addComponents(supportBtn);
 
         try {
-            // إرسال الرسالة في الخاص للمستخدم
             await interaction.user.send({ embeds: [embed], components: [row] });
-            
-            // رد خفيف في الشات يؤكد الإرسال
             await interaction.reply({ 
                 content: '📥 Check your Direct Messages! I sent you the getting started guide.', 
                 ephemeral: true 
             });
         } catch (error) {
-            // لو الخاص مقفول عند المستخدم
             await interaction.reply({ 
                 content: '⚠️ Couldn\'t send you a DM! Please open your Direct Messages in privacy settings.', 
                 embeds: [embed], 
@@ -287,58 +317,54 @@ client.on('interactionCreate', async interaction => {
         }
     }
 
-        // 🎭 Character Search Command
-if (commandName === 'character') {
-    const characterName = interaction.options.getString('name');
+    // 🎭 Character Search Command
+    else if (commandName === 'character') {
+        const characterName = interaction.options.getString('name');
+        await interaction.deferReply();
 
-    await interaction.deferReply(); // انتظار للتحميل من الـ API
+        try {
+            const response = await axios.get(`https://api.jikan.moe/v4/characters?q=${encodeURIComponent(characterName)}&limit=1`);
+            const data = response.data;
 
-    try {
-        // جلب البيانات من Jikan API (AniList / Jikan)
-        const response = await fetch(`https://api.jikan.moe/v4/characters?q=${encodeURIComponent(characterName)}&limit=1`);
-        const data = await response.json();
+            if (!data.data || data.data.length === 0) {
+                return await interaction.editReply(`❌ Sorry, no character found with the name **"${characterName}"**.`);
+            }
 
-        if (!data.data || data.data.length === 0) {
-            return await interaction.editReply(`❌ Sorry, no character found with the name **"${characterName}"**.`);
+            const char = data.data[0];
+            const charName = char.name;
+            const charImg = char.images?.jpg?.image_url;
+            const charAbout = char.about ? (char.about.length > 300 ? char.about.slice(0, 300) + '...' : char.about) : 'No description available.';
+
+            const embed = new EmbedBuilder()
+                .setTitle(`🎭 ${charName}`)
+                .setURL(char.url)
+                .setDescription(charAbout)
+                .setImage(charImg)
+                .setColor('#9b59b6')
+                .setFooter({ text: 'AniTracker • Character Search' });
+
+            const infoBtn = new ButtonBuilder()
+                .setCustomId(`char_info_${char.mal_id}`)
+                .setLabel('ℹ️ Detailed Info')
+                .setStyle(ButtonStyle.Primary);
+
+            const pinterestUrl = `https://www.pinterest.com/search/pins/?q=${encodeURIComponent(charName + ' anime fanart')}`;
+            const fanartBtn = new ButtonBuilder()
+                .setLabel('🎨 Fanart')
+                .setStyle(ButtonStyle.Link)
+                .setURL(pinterestUrl);
+
+            const row = new ActionRowBuilder().addComponents(infoBtn, fanartBtn);
+
+            await interaction.editReply({ embeds: [embed], components: [row] });
+
+        } catch (error) {
+            console.error(error);
+            await interaction.editReply('⚠️ An error occurred while fetching character details. Please try again later.');
         }
-
-        const char = data.data[0];
-        const charName = char.name;
-        const charImg = char.images?.jpg?.image_url;
-        const charAbout = char.about ? (char.about.length > 300 ? char.about.slice(0, 300) + '...' : char.about) : 'No description available.';
-
-        // إنشاء الـ Embed الرئيسي
-        const embed = new EmbedBuilder()
-            .setTitle(`🎭 ${charName}`)
-            .setURL(char.url)
-            .setDescription(charAbout)
-            .setImage(charImg)
-            .setColor('#9b59b6')
-            .setFooter({ text: 'AniTracker • Character Search' });
-
-        // زرار التفاصيل الإضافية (Button ID يحفظ ID الشخصية)
-        const infoBtn = new ButtonBuilder()
-            .setCustomId(`char_info_${char.mal_id}`)
-            .setLabel('ℹ️ Detailed Info')
-            .setStyle(ButtonStyle.Primary);
-
-        // زرار الـ Fanart (ينقل على Pinterest)
-        const pinterestUrl = `https://www.pinterest.com/search/pins/?q=${encodeURIComponent(charName + ' anime fanart')}`;
-        const fanartBtn = new ButtonBuilder()
-            .setLabel('🎨 Fanart')
-            .setStyle(ButtonStyle.Link)
-            .setURL(pinterestUrl);
-
-        const row = new ActionRowBuilder().addComponents(infoBtn, fanartBtn);
-
-        await interaction.editReply({ embeds: [embed], components: [row] });
-
-    } catch (error) {
-        console.error(error);
-        await interaction.editReply('⚠️ An error occurred while fetching character details. Please try again later.');
     }
-}
-    // Favorite Command (Now requires title search)
+
+    // ⭐ Favorite Command
     else if (commandName === 'favorite') {
         await interaction.deferReply({ ephemeral: true });
         const searchQuery = interaction.options.getString('title');
@@ -379,6 +405,7 @@ if (commandName === 'character') {
         }
     }
 
+    // ❌ Unfavorite Command
     else if (commandName === 'unfavorite') {
         await interaction.deferReply({ ephemeral: true });
         const searchQuery = interaction.options.getString('title');
@@ -410,6 +437,7 @@ if (commandName === 'character') {
         }
     }
 
+    // 💖 My Favorites Command
     else if (commandName === 'myfavorites') {
         await interaction.deferReply({ ephemeral: true });
         try {
@@ -431,7 +459,7 @@ if (commandName === 'character') {
         }
     }
 
-   // Help Command
+    // 📖 Help Command
     else if (commandName === 'help') {
         const embed = new EmbedBuilder()
             .setTitle('🤖 AniTracker - Commands Guide')
@@ -443,7 +471,8 @@ if (commandName === 'character') {
                 { name: '💖 `/myfavorites`', value: 'Show your personal favorite anime list.', inline: false },
                 { name: '🔍 `/anime <title>`', value: 'Search for anime details, quick track, or add to favorites.', inline: false },
                 { name: '📖 `/manga <title>`', value: 'Search for manga details.', inline: false },
-                { name: '🎭 `/genre <category>`', value: 'Find top-rated anime filtered by genre.', inline: false },
+                { name: '🎭 `/character <name>`', value: 'Search for anime characters.', inline: false },
+                { name: '🎲 `/genre <category>`', value: 'Find top-rated anime filtered by genre.', inline: false },
                 { name: '🎯 `/track <title>`', value: 'Track an anime for notifications in this channel.', inline: false },
                 { name: '🛑 `/untrack <title>`', value: 'Stop tracking an anime in this channel.', inline: false },
                 { name: '📌 `/mytracked`', value: 'Show all anime currently tracked in this server.', inline: false }
@@ -451,17 +480,17 @@ if (commandName === 'character') {
             .setColor('#9b59b6')
             .setFooter({ text: 'Report bugs to _h8rtless_' });
 
-        // إنشاء زر رابط سيرفر الدعم
         const supportBtn = new ButtonBuilder()
             .setLabel('💬 Support Server')
             .setStyle(ButtonStyle.Link)
-            .setURL('https://discord.gg/H4Af2y4RD8'); // استبدل الرابط برابط سيرفر الدعم الخاص بك
+            .setURL('https://discord.gg/H4Af2y4RD8');
 
         const row = new ActionRowBuilder().addComponents(supportBtn);
 
         await interaction.reply({ embeds: [embed], components: [row] });
     }
-    // Anime Command
+
+    // 🔍 Anime Command
     else if (commandName === 'anime') {
         await interaction.deferReply();
         const searchQuery = interaction.options.getString('title');
@@ -519,7 +548,7 @@ if (commandName === 'character') {
         }
     }
 
-    // Manga Command
+    // 📖 Manga Command
     else if (commandName === 'manga') {
         await interaction.deferReply();
         const searchQuery = interaction.options.getString('title');
@@ -565,7 +594,7 @@ if (commandName === 'character') {
         }
     }
 
-    // Genre Command
+    // 🎲 Genre Command
     else if (commandName === 'genre') {
         await interaction.deferReply();
         const genreChoice = interaction.options.getString('category');
@@ -628,7 +657,7 @@ if (commandName === 'character') {
         }
     }
 
-    // Track Command
+    // 🎯 Track Command
     else if (commandName === 'track') {
         await interaction.deferReply();
         const searchQuery = interaction.options.getString('title');
@@ -687,7 +716,7 @@ if (commandName === 'character') {
         }
     }
 
-    // Untrack Command
+    // 🛑 Untrack Command
     else if (commandName === 'untrack') {
         await interaction.deferReply();
         const searchQuery = interaction.options.getString('title');
@@ -719,7 +748,7 @@ if (commandName === 'character') {
         }
     }
 
-    // List Tracked Command
+    // 📌 List Tracked Command
     else if (commandName === 'mytracked') {
         await interaction.deferReply();
         try {
@@ -775,28 +804,29 @@ async function checkUpdates() {
                             const coverUrl = (anime.coverImage && anime.coverImage.large) || 'https://i.imgur.com/AGv4yDI.png';
 
                             const embed = new EmbedBuilder()
-                                .setTitle(`🚨 New Episode Released!`)
-                                .setDescription(`Episode **${currentEps}** of **[${animeTitle}](${siteUrl})** is now available! 🎉`)
+                                .setTitle('🚨 New Episode Alert!')
+                                .setDescription(`**[${animeTitle}](${siteUrl})** has released new episodes!\n\n📺 **New Episode Count:** ${currentEps}`)
                                 .setThumbnail(coverUrl)
-                                .setColor('#e74c3c');
+                                .setColor('#e74c3c')
+                                .setTimestamp();
 
                             await channel.send({ embeds: [embed] });
                         }
 
+                        // Update Database
                         item.lastEpisodes = currentEps;
-                        item.lastStatus = anime.status || 'UNKNOWN';
+                        item.lastStatus = anime.status || item.lastStatus;
                         await item.save();
                     }
                 }
-                await new Promise(resolve => setTimeout(resolve, 1000));
             } catch (err) {
-                console.error(`Error checking update for anime ID ${item.animeId}:`, err.message);
+                console.error(`Error checking channel update for anime ID ${item.animeId}:`, err.message);
             }
         }
 
-        // 2. Check Personal Favorite Items (DM Alerts)
+        // 2. Check Personal Favorites (DM Alerts)
         const favorites = await FavoriteItem.find({});
-        for (const fav of favorites) {
+        for (const item of favorites) {
             try {
                 const gqlQuery = `
                 query ($id: Int) {
@@ -809,41 +839,43 @@ async function checkUpdates() {
                   }
                 }`;
 
-                const data = await fetchAniList(gqlQuery, { id: fav.animeId });
+                const data = await fetchAniList(gqlQuery, { id: item.animeId });
                 const anime = data?.Media;
 
                 if (anime) {
                     const currentEps = anime.episodes || 0;
-                    const lastEps = fav.lastEpisodes || 0;
+                    const lastEps = item.lastEpisodes || 0;
 
                     if (currentEps > lastEps) {
-                        const user = await client.users.fetch(fav.userId).catch(() => null);
+                        const user = await client.users.fetch(item.userId).catch(() => null);
                         if (user) {
-                            const animeTitle = (anime.title && (anime.title.english || anime.title.romaji)) || fav.animeTitle;
+                            const animeTitle = (anime.title && (anime.title.english || anime.title.romaji)) || item.animeTitle;
                             const siteUrl = anime.siteUrl || 'https://anilist.co';
                             const coverUrl = (anime.coverImage && anime.coverImage.large) || 'https://i.imgur.com/AGv4yDI.png';
 
                             const embed = new EmbedBuilder()
-                                .setTitle(`⭐ Favorite Anime Update!`)
-                                .setDescription(`Episode **${currentEps}** of **[${animeTitle}](${siteUrl})** is now out! Enjoy watching! 🎉`)
+                                .setTitle('⭐ Favorite Anime Update!')
+                                .setDescription(`A new episode of **[${animeTitle}](${siteUrl})** is out!\n\n📺 **Current Episodes:** ${currentEps}`)
                                 .setThumbnail(coverUrl)
-                                .setColor('#f1c40f');
+                                .setColor('#f1c40f')
+                                .setTimestamp();
 
                             await user.send({ embeds: [embed] }).catch(() => null);
                         }
 
-                        fav.lastEpisodes = currentEps;
-                        await fav.save();
+                        // Update Database
+                        item.lastEpisodes = currentEps;
+                        await item.save();
                     }
                 }
-                await new Promise(resolve => setTimeout(resolve, 1000));
             } catch (err) {
-                console.error(`Error checking favorite for anime ID ${fav.animeId}:`, err.message);
+                console.error(`Error checking DM update for user ${item.userId}:`, err.message);
             }
         }
     } catch (err) {
-        console.error('Error in tracker loop:', err);
+        console.error('Error in checkUpdates loop:', err);
     }
 }
 
+// Log in to Discord
 client.login(process.env.DISCORD_TOKEN);
