@@ -286,6 +286,58 @@ client.on('interactionCreate', async interaction => {
             });
         }
     }
+
+        // 🎭 Character Search Command
+if (commandName === 'character') {
+    const characterName = interaction.options.getString('name');
+
+    await interaction.deferReply(); // انتظار للتحميل من الـ API
+
+    try {
+        // جلب البيانات من Jikan API (AniList / Jikan)
+        const response = await fetch(`https://api.jikan.moe/v4/characters?q=${encodeURIComponent(characterName)}&limit=1`);
+        const data = await response.json();
+
+        if (!data.data || data.data.length === 0) {
+            return await interaction.editReply(`❌ Sorry, no character found with the name **"${characterName}"**.`);
+        }
+
+        const char = data.data[0];
+        const charName = char.name;
+        const charImg = char.images?.jpg?.image_url;
+        const charAbout = char.about ? (char.about.length > 300 ? char.about.slice(0, 300) + '...' : char.about) : 'No description available.';
+
+        // إنشاء الـ Embed الرئيسي
+        const embed = new EmbedBuilder()
+            .setTitle(`🎭 ${charName}`)
+            .setURL(char.url)
+            .setDescription(charAbout)
+            .setImage(charImg)
+            .setColor('#9b59b6')
+            .setFooter({ text: 'AniTracker • Character Search' });
+
+        // زرار التفاصيل الإضافية (Button ID يحفظ ID الشخصية)
+        const infoBtn = new ButtonBuilder()
+            .setCustomId(`char_info_${char.mal_id}`)
+            .setLabel('ℹ️ Detailed Info')
+            .setStyle(ButtonStyle.Primary);
+
+        // زرار الـ Fanart (ينقل على Pinterest)
+        const pinterestUrl = `https://www.pinterest.com/search/pins/?q=${encodeURIComponent(charName + ' anime fanart')}`;
+        const fanartBtn = new ButtonBuilder()
+            .setLabel('🎨 Fanart')
+            .setStyle(ButtonStyle.Link)
+            .setURL(pinterestUrl);
+
+        const row = new ActionRowBuilder().addComponents(infoBtn, fanartBtn);
+
+        await interaction.editReply({ embeds: [embed], components: [row] });
+
+    } catch (error) {
+        console.error(error);
+        await interaction.editReply('⚠️ An error occurred while fetching character details. Please try again later.');
+    }
+}
     // Favorite Command (Now requires title search)
     else if (commandName === 'favorite') {
         await interaction.deferReply({ ephemeral: true });
