@@ -363,7 +363,7 @@ client.on('interactionCreate', async interaction => {
                 .setStyle(ButtonStyle.Link)
                 .setURL(pinterestUrl);
             
-// 1. زرار More Info التفاعلي
+// 1. زرار More Info
             const infoBtn = new ButtonBuilder()
                 .setCustomId(`char_info_${char.id}`)
                 .setLabel('📖 More Info')
@@ -376,13 +376,10 @@ client.on('interactionCreate', async interaction => {
                 .setStyle(ButtonStyle.Link)
                 .setURL(pinterestUrl);
 
-            // 3. دمجهم في الصف وإرسال الرد
+            // 3. التجميع والإرسال
             const row = new ActionRowBuilder().addComponents(infoBtn, fanartBtn);
 
             await interaction.editReply({ embeds: [embed], components: [row] });
-        } catch (error) {
-            console.error(error);
-            await interaction.editReply('⚠️ An error occurred while fetching character details. Please try again later.');
         }
     }
 
