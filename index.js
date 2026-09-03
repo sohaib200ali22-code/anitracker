@@ -369,15 +369,15 @@ client.on('interactionCreate', async interaction => {
                 .setLabel('📖 More Info')
                 .setStyle(ButtonStyle.Primary);
 
-            // 2. زرار Fanart
-            const pinterestUrl = `https://www.pinterest.com/search/pins/?q=${encodeURIComponent(nameFull + ' anime fanart')}`;
-            const fanartBtn = new ButtonBuilder()
+            // 2. زرار Fanart بأسماء جديدة بالكامل
+            const pinterestLink = `https://www.pinterest.com/search/pins/?q=${encodeURIComponent(nameFull + ' anime fanart')}`;
+            const animeFanartBtn = new ButtonBuilder()
                 .setLabel('🎨 Fanart')
                 .setStyle(ButtonStyle.Link)
-                .setURL(pinterestUrl);
+                .setURL(pinterestLink);
 
             // 3. التجميع والإرسال
-            const row = new ActionRowBuilder().addComponents(infoBtn, fanartBtn);
+            const row = new ActionRowBuilder().addComponents(infoBtn, animeFanartBtn);
 
             await interaction.editReply({ embeds: [embed], components: [row] });
         }
