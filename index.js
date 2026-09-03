@@ -145,6 +145,10 @@ const commands = [
     new SlashCommandBuilder()
         .setName('track')
         .setDescription('Track an anime for new episode updates in this channel')
+        // FIX: block this command from being usable in DMs at the Discord level —
+        // it only makes sense inside a server channel. Discord will hide/refuse
+        // the command in DMs before it ever reaches our code.
+        .setDMPermission(false)
         .addStringOption(option =>
             option.setName('title')
                 .setDescription('Anime title to track')
@@ -273,16 +277,31 @@ client.on('interactionCreate', async interaction => {
             await interaction.deferReply({ ephemeral: true });
             const charId = parseInt(interaction.customId.replace('char_info_', ''));
 
+            // FIX: expanded the query — added description, image, and the anime
+            // appearances + Japanese voice actor so "More Info" actually shows
+            // more useful data than before, not just name/age/gender.
             const gqlQuery = `
             query ($id: Int) {
               Character (id: $id) {
                 id
                 name { full native alternative }
+                image { large }
+                description(asHtml: false)
                 gender
                 age
                 dateOfBirth { year month day }
                 favourites
                 siteUrl
+                media (perPage: 5, sort: POPULARITY_DESC) {
+                  edges {
+                    voiceActors (language: JAPANESE) {
+                      name { full }
+                    }
+                    node {
+                      title { romaji english }
+                    }
+                  }
+                }
               }
             }`;
 
@@ -297,15 +316,36 @@ client.on('interactionCreate', async interaction => {
                     ? `${char.dateOfBirth.month ?? '?'}/${char.dateOfBirth.day ?? '?'}`
                     : 'N/A';
 
+                // FIX: full bio, not cut off — same spoiler/HTML cleanup as the
+                // main /character command, capped only at Discord's hard embed
+                // description limit (4096 chars) as a safety net, not a real truncation.
+                let cleanDesc = char.description ? char.description
+                    .replace(/~!/g, '||')
+                    .replace(/!~/g, '||')
+                    .replace(/<[^>]*>/gm, '') : 'No description available.';
+                if (cleanDesc.length > 4000) cleanDesc = cleanDesc.substring(0, 4000) + '...';
+
+                const appearsIn = char.media?.edges
+                    ?.map(e => e.node?.title?.english || e.node?.title?.romaji)
+                    .filter(Boolean)
+                    .slice(0, 5)
+                    .join('\n') || 'N/A';
+
+                const voiceActorJP = char.media?.edges?.find(e => e.voiceActors?.[0]?.name?.full)?.voiceActors?.[0]?.name?.full || 'N/A';
+
                 const embed = new EmbedBuilder()
                     .setTitle(`📖 ${char.name?.full || 'Unknown'} — More Info`)
                     .setURL(char.siteUrl || 'https://anilist.co')
+                    .setDescription(cleanDesc)
+                    .setThumbnail(char.image?.large || 'https://i.imgur.com/AGv4yDI.png')
                     .addFields(
                         { name: 'Native Name', value: char.name?.native || 'N/A', inline: true },
                         { name: 'Gender', value: char.gender || 'N/A', inline: true },
                         { name: 'Age', value: char.age || 'N/A', inline: true },
                         { name: 'Date of Birth', value: dob, inline: true },
                         { name: 'Favorites', value: `${char.favourites ? char.favourites.toLocaleString() : 0}`, inline: true },
+                        { name: 'Voice Actor (JP)', value: voiceActorJP, inline: true },
+                        { name: 'Appears In', value: appearsIn, inline: false },
                         { name: 'Alternative Names', value: altNames, inline: false }
                     )
                     .setColor('#9b59b6');
@@ -417,7 +457,10 @@ client.on('interactionCreate', async interaction => {
                 .replace(/~!/g, '||')
                 .replace(/!~/g, '||')
                 .replace(/<[^>]*>/gm, '') : 'No description available.';
-            if (cleanDesc.length > 350) cleanDesc = cleanDesc.substring(0, 350) + '...';
+            // FIX: no longer truncating to 350 chars — user wants the full character
+            // bio in /character search results. Only capped at Discord's hard embed
+            // description limit (4096) as a safety net, not a real truncation.
+            if (cleanDesc.length > 4000) cleanDesc = cleanDesc.substring(0, 4000) + '...';
 
             const embed = new EmbedBuilder()
                 .setTitle(`🎭 ${nameFull}${nameNative}`)
@@ -584,7 +627,9 @@ client.on('interactionCreate', async interaction => {
 
         const row = new ActionRowBuilder().addComponents(supportBtn, profileBtn);
 
-        await interaction.reply({ embeds: [embed], components: [row] });
+        // FIX: added ephemeral so only the person who ran /help sees the reply,
+        // consistent with /start, /myfavorites, and /mytracked.
+        await interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
     }
 
     // 🔍 Anime Command
@@ -696,10 +741,12 @@ client.on('interactionCreate', async interaction => {
         await interaction.deferReply();
         const genreChoice = interaction.options.getString('category');
 
+        // FIX: added status: RELEASING so /genre only ever suggests anime that
+        // is currently airing/ongoing, never anime that has already finished.
         const gqlQuery = `
         query ($genre: String) {
           Page (page: 1, perPage: 10) {
-            media (genre: $genre, type: ANIME, sort: SCORE_DESC) {
+            media (genre: $genre, type: ANIME, status: RELEASING, sort: SCORE_DESC) {
               id
               title { romaji english }
               episodes
@@ -717,7 +764,7 @@ client.on('interactionCreate', async interaction => {
             const mediaList = data?.Page?.media;
 
             if (!mediaList || mediaList.length === 0) {
-                return interaction.editReply(`No anime found for genre: ${genreChoice}`);
+                return interaction.editReply(`No currently-airing anime found for genre: ${genreChoice}`);
             }
 
             const anime = mediaList[Math.floor(Math.random() * mediaList.length)];
@@ -756,6 +803,17 @@ client.on('interactionCreate', async interaction => {
 
     // 🎯 Track Command
     else if (commandName === 'track') {
+        // FIX: defense-in-depth guard — even though setDMPermission(false) should
+        // stop this from being invoked in DMs, this check makes sure that if it
+        // somehow does fire outside a server (no guildId), we reject it cleanly
+        // instead of crashing on interaction.guildId being null later on.
+        if (!interaction.guildId) {
+            return interaction.reply({
+                content: '🚫 This command only works inside a server channel, not in DMs.',
+                ephemeral: true
+            });
+        }
+
         await interaction.deferReply();
         const searchQuery = interaction.options.getString('title');
 
