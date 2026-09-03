@@ -357,8 +357,7 @@ client.on('interactionCreate', async interaction => {
                 .setColor('#9b59b6')
                 .setFooter({ text: 'AniTracker • Character Search' });
 
-            const pinterestUrl = `https://www.pinterest.com/search/pins/?q=${encodeURIComponent(nameFull + ' anime fanart')}`;
-            const fanartBtn = new ButtonBuilder()
+        
                 .setLabel('🎨 Fanart')
                 .setStyle(ButtonStyle.Link)
                 .setURL(pinterestUrl);
