@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ActivityType } = require('discord.js');
+const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ActivityType, PermissionFlagsBits } = require('discord.js');
 const axios = require('axios');
 const http = require('http');
 const mongoose = require('mongoose');
@@ -161,9 +161,13 @@ const commands = [
         .setDescription('List all tracked anime in this server'),
     // NEW: dev-only command to manually trigger the 30-min episode check on demand,
     // so new-episode alerts can be tested without waiting for the real interval.
+    // FIX: hidden from regular members by default — only users with Administrator
+    // permission in a server will even see this command in the slash command list.
+    // The actual DEV_USER_ID check in the handler still gates who can run it.
     new SlashCommandBuilder()
         .setName('testalert')
         .setDescription('(Dev only) Manually run the episode-alert check right now')
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
 ].map(command => command.toJSON());
 
 client.once('ready', async () => {
