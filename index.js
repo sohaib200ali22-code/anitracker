@@ -422,9 +422,8 @@ client.on('interactionCreate', async interaction => {
         } catch (err) {
             console.error(err);
             await interaction.editReply('Failed to add to personal favorites.');
-         }
+        }
     }
-
     // ❌ Unfavorite Command
     else if (commandName === 'unfavorite') {
         await interaction.deferReply({ ephemeral: true });
