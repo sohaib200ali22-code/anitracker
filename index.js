@@ -358,6 +358,7 @@ client.on('interactionCreate', async interaction => {
                 .setFooter({ text: 'AniTracker • Character Search' });
 
         
+               const fanartBtn = new ButtonBuilder()
                 .setLabel('🎨 Fanart')
                 .setStyle(ButtonStyle.Link)
                 .setURL(pinterestUrl);
