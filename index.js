@@ -246,7 +246,7 @@ client.on('interactionCreate', async interaction => {
 
     const { commandName } = interaction;
 
-    // 🚀 Start Command (Positioned Top Priority)
+  // 🚀 Start Command
     if (commandName === 'start') {
         const embed = new EmbedBuilder()
             .setTitle('🚀 Welcome to AniTracker!')
@@ -260,9 +260,32 @@ client.on('interactionCreate', async interaction => {
             .setThumbnail(client.user.displayAvatarURL())
             .setFooter({ text: 'AniTracker • Developed for Anime Lovers' });
 
-        await interaction.reply({ embeds: [embed] });
-    }
+        const supportBtn = new ButtonBuilder()
+            .setLabel('💬 Support Server')
+            .setStyle(ButtonStyle.Link)
+            .setURL('https://discord.gg/YOUR_INVITE_CODE'); // استبدل الرابط برابط سيرفرك
 
+        const row = new ActionRowBuilder().addComponents(supportBtn);
+
+        try {
+            // إرسال الرسالة في الخاص للمستخدم
+            await interaction.user.send({ embeds: [embed], components: [row] });
+            
+            // رد خفيف في الشات يؤكد الإرسال
+            await interaction.reply({ 
+                content: '📥 Check your Direct Messages! I sent you the getting started guide.', 
+                ephemeral: true 
+            });
+        } catch (error) {
+            // لو الخاص مقفول عند المستخدم
+            await interaction.reply({ 
+                content: '⚠️ Couldn\'t send you a DM! Please open your Direct Messages in privacy settings.', 
+                embeds: [embed], 
+                components: [row],
+                ephemeral: true 
+            });
+        }
+    }
     // Favorite Command (Now requires title search)
     else if (commandName === 'favorite') {
         await interaction.deferReply({ ephemeral: true });
