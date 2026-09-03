@@ -420,8 +420,9 @@ client.on('interactionCreate', async interaction => {
 
             await interaction.editReply(`⭐ Added **[${animeTitle}](${anime.siteUrl})** to your personal favorites! You will receive DMs when new episodes drop.`);
         } catch (err) {
+            console.error(err);
             await interaction.editReply('Failed to add to personal favorites.');
-        }
+         }
     }
 
     // ❌ Unfavorite Command
