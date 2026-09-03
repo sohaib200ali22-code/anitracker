@@ -246,33 +246,6 @@ client.on('interactionCreate', async interaction => {
                 await interaction.editReply({ content: 'Failed to add to personal favorites.' });
             }
         }
-        else if (interaction.customId.startsWith('char_info_')) {
-            await interaction.deferReply({ ephemeral: true });
-            const malId = interaction.customId.replace('char_info_', '');
-
-            try {
-                const res = await axios.get(`https://api.jikan.moe/v4/characters/${malId}/full`);
-                const char = res.data?.data;
-
-                if (!char) return interaction.editReply('Character details not found.');
-
-                const nicknames = char.nicknames?.length > 0 ? char.nicknames.join(', ') : 'None';
-                const favorites = char.favorites ? char.favorites.toLocaleString() : '0';
-
-                const embed = new EmbedBuilder()
-                    .setTitle(`ℹ️ Detailed Info: ${char.name}`)
-                    .addFields(
-                        { name: 'Kanji Name', value: char.name_kanji || 'N/A', inline: true },
-                        { name: 'Nicknames', value: nicknames, inline: true },
-                        { name: 'Favorites on MAL', value: `❤️ ${favorites}`, inline: true }
-                    )
-                    .setColor('#8e44ad');
-
-                await interaction.editReply({ embeds: [embed] });
-            } catch (err) {
-                await interaction.editReply('Could not fetch additional details right now.');
-            }
-        }
         return;
     }
 
@@ -317,44 +290,62 @@ client.on('interactionCreate', async interaction => {
         }
     }
 
-    // 🎭 Character Search Command
+    // 🎭 Character Search Command (Updated to AniList API for 100% stability)
     else if (commandName === 'character') {
         const characterName = interaction.options.getString('name');
         await interaction.deferReply();
 
-        try {
-            const response = await axios.get(`https://api.jikan.moe/v4/characters?q=${encodeURIComponent(characterName)}&limit=1`);
-            const data = response.data;
+        const gqlQuery = `
+        query ($search: String) {
+          Character (search: $search) {
+            id
+            name { full native alternative }
+            image { large }
+            description(asHtml: false)
+            siteUrl
+            favourites
+            media (perPage: 1, sort: POPULARITY_DESC) {
+              nodes {
+                title { romaji english }
+              }
+            }
+          }
+        }`;
 
-            if (!data.data || data.data.length === 0) {
+        try {
+            const data = await fetchAniList(gqlQuery, { search: characterName });
+            const char = data?.Character;
+
+            if (!char) {
                 return await interaction.editReply(`❌ Sorry, no character found with the name **"${characterName}"**.`);
             }
 
-            const char = data.data[0];
-            const charName = char.name;
-            const charImg = char.images?.jpg?.image_url;
-            const charAbout = char.about ? (char.about.length > 300 ? char.about.slice(0, 300) + '...' : char.about) : 'No description available.';
+            const nameFull = char.name?.full || characterName;
+            const nameNative = char.name?.native ? ` (${char.name.native})` : '';
+            const animeSource = char.media?.nodes?.[0]?.title?.english || char.media?.nodes?.[0]?.title?.romaji || 'Unknown Anime';
+            
+            let cleanDesc = char.description ? char.description.replace(/<[^>]*>?/gm, '') : 'No description available.';
+            if (cleanDesc.length > 350) cleanDesc = cleanDesc.substring(0, 350) + '...';
 
             const embed = new EmbedBuilder()
-                .setTitle(`🎭 ${charName}`)
-                .setURL(char.url)
-                .setDescription(charAbout)
-                .setImage(charImg)
+                .setTitle(`🎭 ${nameFull}${nameNative}`)
+                .setURL(char.siteUrl || 'https://anilist.co')
+                .setDescription(cleanDesc)
+                .addFields(
+                    { name: '📺 From Anime', value: animeSource, inline: true },
+                    { name: '❤️ Favorites', value: `${char.favourites ? char.favourites.toLocaleString() : 0}`, inline: true }
+                )
+                .setImage(char.image?.large || 'https://i.imgur.com/AGv4yDI.png')
                 .setColor('#9b59b6')
                 .setFooter({ text: 'AniTracker • Character Search' });
 
-            const infoBtn = new ButtonBuilder()
-                .setCustomId(`char_info_${char.mal_id}`)
-                .setLabel('ℹ️ Detailed Info')
-                .setStyle(ButtonStyle.Primary);
-
-            const pinterestUrl = `https://www.pinterest.com/search/pins/?q=${encodeURIComponent(charName + ' anime fanart')}`;
+            const pinterestUrl = `https://www.pinterest.com/search/pins/?q=${encodeURIComponent(nameFull + ' anime fanart')}`;
             const fanartBtn = new ButtonBuilder()
                 .setLabel('🎨 Fanart')
                 .setStyle(ButtonStyle.Link)
                 .setURL(pinterestUrl);
 
-            const row = new ActionRowBuilder().addComponents(infoBtn, fanartBtn);
+            const row = new ActionRowBuilder().addComponents(fanartBtn);
 
             await interaction.editReply({ embeds: [embed], components: [row] });
 
@@ -437,7 +428,7 @@ client.on('interactionCreate', async interaction => {
         }
     }
 
-    // 💖 My Favorites Command
+    // 💖 My Favorites Command (Hidden/Ephemeral)
     else if (commandName === 'myfavorites') {
         await interaction.deferReply({ ephemeral: true });
         try {
@@ -478,14 +469,19 @@ client.on('interactionCreate', async interaction => {
                 { name: '📌 `/mytracked`', value: 'Show all anime currently tracked in this server.', inline: false }
             )
             .setColor('#9b59b6')
-            .setFooter({ text: 'Report bugs to _h8rtless_' });
+            .setFooter({ text: 'Report bugs to developer: _h8rtless_   don't dm unless it's a real problem' });
 
-        const supportBtn = new ButtonBuilder()
+      const supportBtn = new ButtonBuilder()
             .setLabel('💬 Support Server')
             .setStyle(ButtonStyle.Link)
             .setURL('https://discord.gg/H4Af2y4RD8');
 
-        const row = new ActionRowBuilder().addComponents(supportBtn);
+        const profileBtn = new ButtonBuilder()
+            .setLabel('👤 Developer Profile')
+            .setStyle(ButtonStyle.Link)
+            .setURL('https://discord.com/users/1326815636395003966');
+
+        const row = new ActionRowBuilder().addComponents(supportBtn, profileBtn);
 
         await interaction.reply({ embeds: [embed], components: [row] });
     }
@@ -748,9 +744,9 @@ client.on('interactionCreate', async interaction => {
         }
     }
 
-    // 📌 List Tracked Command
+    // 📌 List Tracked Command (Hidden/Ephemeral)
     else if (commandName === 'mytracked') {
-        await interaction.deferReply();
+        await interaction.deferReply({ ephemeral: true });
         try {
             const items = await TrackedItem.find({ guildId: interaction.guildId });
             if (items.length === 0) {
