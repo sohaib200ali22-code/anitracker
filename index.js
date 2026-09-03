@@ -362,24 +362,24 @@ client.on('interactionCreate', async interaction => {
                 .setLabel('🎨 Fanart')
                 .setStyle(ButtonStyle.Link)
                 .setURL(pinterestUrl);
-
-            const row = new ActionRowBuilder
-// زرار More Info التفاعلي
+            
+// 1. زرار More Info التفاعلي
             const infoBtn = new ButtonBuilder()
                 .setCustomId(`char_info_${char.id}`)
                 .setLabel('📖 More Info')
                 .setStyle(ButtonStyle.Primary);
 
+            // 2. زرار Fanart
             const pinterestUrl = `https://www.pinterest.com/search/pins/?q=${encodeURIComponent(nameFull + ' anime fanart')}`;
             const fanartBtn = new ButtonBuilder()
                 .setLabel('🎨 Fanart')
                 .setStyle(ButtonStyle.Link)
                 .setURL(pinterestUrl);
 
+            // 3. دمجهم في الصف وإرسال الرد
             const row = new ActionRowBuilder().addComponents(infoBtn, fanartBtn);
 
             await interaction.editReply({ embeds: [embed], components: [row] });
-
         } catch (error) {
             console.error(error);
             await interaction.editReply('⚠️ An error occurred while fetching character details. Please try again later.');
