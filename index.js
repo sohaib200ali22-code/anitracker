@@ -384,46 +384,46 @@ client.on('interactionCreate', async interaction => {
     }
 
     // ⭐ Favorite Command
-    else if (commandName === 'favorite') {
-        await interaction.deferReply({ ephemeral: true });
-        const searchQuery = interaction.options.getString('title');
+else if (commandName === 'favorite') {
+    await interaction.deferReply({ ephemeral: true });
+    const searchQuery = interaction.options.getString('title');
 
-        const gqlQuery = `
-        query ($search: String) {
-          Media (search: $search, type: ANIME) {
-            id
-            title { romaji english }
-            episodes
-            siteUrl
-          }
-        }`;
+    const gqlQuery = `
+    query ($search: String) {
+      Media (search: $search, type: ANIME) {
+        id
+        title { romaji english }
+        episodes
+        siteUrl
+      }
+    }`;
 
-        try {
-            const data = await fetchAniList(gqlQuery, { search: searchQuery });
-            const anime = data?.Media;
+    try {
+        const data = await fetchAniList(gqlQuery, { search: searchQuery });
+        const anime = data?.Media;
 
-            if (!anime) return interaction.editReply('Anime not found! Please check the title and try again.');
+        if (!anime) return interaction.editReply('Anime not found! Please check the title and try again.');
 
-            const animeTitle = (anime.title && (anime.title.english || anime.title.romaji)) || searchQuery;
-            const existing = await FavoriteItem.findOne({ userId: interaction.user.id, animeId: anime.id });
+        const animeTitle = (anime.title && (anime.title.english || anime.title.romaji)) || searchQuery;
+        const existing = await FavoriteItem.findOne({ userId: interaction.user.id, animeId: anime.id });
 
-            if (existing) {
-                return await interaction.editReply(`⭐ **${animeTitle}** is already in your personal favorites!`);
-            }
-
-            await FavoriteItem.create({
-                userId: interaction.user.id,
-                animeId: anime.id,
-                animeTitle: animeTitle,
-                lastEpisodes: anime.episodes || 0
-            });
-
-            await interaction.editReply(`⭐ Added **[${animeTitle}](${anime.siteUrl})** to your personal favorites! You will receive DMs when new episodes drop.`);
-        } catch (err) {
-            console.error(err);
-            await interaction.editReply('Failed to add to personal favorites.');
+        if (existing) {
+            return await interaction.editReply(`⭐ **${animeTitle}** is already in your personal favorites!`);
         }
+
+        await FavoriteItem.create({
+            userId: interaction.user.id,
+            animeId: anime.id,
+            animeTitle: animeTitle,
+            lastEpisodes: anime.episodes || 0
+        });
+
+        await interaction.editReply(`⭐ Added **[${animeTitle}](${anime.siteUrl})** to your personal favorites! You will receive DMs when new episodes drop.`);
+    } catch (err) {
+        console.error(err);
+        await interaction.editReply('Failed to add to personal favorites.');
     }
+}
     // ❌ Unfavorite Command
     else if (commandName === 'unfavorite') {
         await interaction.deferReply({ ephemeral: true });
