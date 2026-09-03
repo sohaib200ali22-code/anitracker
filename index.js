@@ -261,7 +261,7 @@ client.on('interactionCreate', async interaction => {
             .addFields(
                 { name: '✨ What can AniTracker do?', value: '• Search Anime & Manga details instantly.\n• Track anime in server channels for group alerts.\n• Add anime to personal favorites for **Direct Message (DM)** updates.\n• Find random high-rated anime by category/genre.' },
                 { name: '📚 Quick Start Commands', value: '`/anime` - Search any anime\n`/genre` - Discover by genre\n`/track` - Track in channel\n`/favorite <title>` - Track in DMs\n`/help` - Show full commands list' },
-                { name: '🐛 Report a Problem or Request Features', value: 'If you encounter any bugs, issues, or have suggestions, please contact the developer directly:\n👤 **Discord User:** `_h8rtless_`' }
+                { name: '🐛 Report a Problem or Request Features', value: 'If you encounter any bugs, issues, or have suggestions, please visit the support server for more help}
             )
             .setColor('#2ecc71')
             .setThumbnail(client.user.displayAvatarURL())
@@ -469,7 +469,7 @@ client.on('interactionCreate', async interaction => {
                 { name: '📌 `/mytracked`', value: 'Show all anime currently tracked in this server.', inline: false }
             )
             .setColor('#9b59b6')
-            .setFooter({ text: 'Report bugs to developer: _h8rtless_   don't dm unless it's a real problem' });
+            .setFooter({ text:`Report bugs to developer: _h8rtless_   don't dm unless it's a real problem` });
 
       const supportBtn = new ButtonBuilder()
             .setLabel('💬 Support Server')
