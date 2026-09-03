@@ -356,7 +356,7 @@ client.on('interactionCreate', async interaction => {
         }
     }
 
-    // Help Command
+   // Help Command
     else if (commandName === 'help') {
         const embed = new EmbedBuilder()
             .setTitle('🤖 AniTracker - Commands Guide')
@@ -376,9 +376,16 @@ client.on('interactionCreate', async interaction => {
             .setColor('#9b59b6')
             .setFooter({ text: 'Report bugs to _h8rtless_' });
 
-        await interaction.reply({ embeds: [embed] });
-    }
+        // إنشاء زر رابط سيرفر الدعم
+        const supportBtn = new ButtonBuilder()
+            .setLabel('💬 Support Server')
+            .setStyle(ButtonStyle.Link)
+            .setURL('https://discord.gg/H4Af2y4RD8'); // استبدل الرابط برابط سيرفر الدعم الخاص بك
 
+        const row = new ActionRowBuilder().addComponents(supportBtn);
+
+        await interaction.reply({ embeds: [embed], components: [row] });
+    }
     // Anime Command
     else if (commandName === 'anime') {
         await interaction.deferReply();
