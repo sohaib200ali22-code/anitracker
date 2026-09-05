@@ -1120,6 +1120,11 @@ client.on('interactionCreate', async interaction => {
 // Automated Episode Checker Function
 async function checkUpdates() {
     try {
+        // If an anime is also in personal favorites, the DM notification wins
+        // and the channel notification is suppressed to avoid duplicate alerts.
+        const favorites = await FavoriteItem.find({});
+        const favoriteAnimeIds = new Set(favorites.map(item => item.animeId));
+
         // 1. Check Channel Tracked Items
         const tracked = await TrackedItem.find({});
         for (const item of tracked) {
@@ -1147,6 +1152,15 @@ async function checkUpdates() {
                     const lastEps = item.lastEpisodes || 0;
 
                     if (currentEps > lastEps) {
+                        if (favoriteAnimeIds.has(item.animeId)) {
+                            // Keep the tracker in sync without sending its channel
+                            // alert; the matching favorite will send the DM below.
+                            item.lastEpisodes = currentEps;
+                            item.lastStatus = anime.status || item.lastStatus;
+                            await item.save();
+                            continue;
+                        }
+
                         const channel = await client.channels.fetch(item.channelId).catch(() => null);
                         if (channel) {
                             const animeTitle = (anime.title && (anime.title.english || anime.title.romaji)) || item.animeTitle;
@@ -1181,7 +1195,6 @@ async function checkUpdates() {
         }
 
         // 2. Check Personal Favorites (DM Alerts)
-        const favorites = await FavoriteItem.find({});
         for (const item of favorites) {
             try {
                 const gqlQuery = `
