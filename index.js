@@ -299,11 +299,11 @@ client.on('interactionCreate', async interaction => {
                 }
 
                 if (!isVerified) {
-                    return interaction.update({
-                        content: '🔞 This category is restricted to verified adults. Please talk to the bot owner in DMs for age verification first.',
-                        components: []
-                    });
-                }
+    return interaction.update({
+        content: `🔞 **This category is restricted to verified adults.**\n\n👤 **Owner:** \`_h8rtless_\`\n💬 Join our support server to open a ticket and verify your age:\nhttps://discord.gg/H4Af2y4RD8`,
+        components: []
+    });
+}
 
                 if (interaction.guildId) {
                     return interaction.update({
