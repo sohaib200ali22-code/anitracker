@@ -196,8 +196,29 @@ const commands = [
                 .setDescription('Character name')
                 .setRequired(true)),
     new SlashCommandBuilder()
-        .setName('genre')
-        .setDescription('Choose Anime or Manga, then get a recommendation by category'),
+    .setName('genre')
+    .setDescription('Choose Anime or Manga, then get a recommendation by category')
+    .addStringOption(option =>
+        option.setName('status')
+            .setDescription('Filter by status (Optional)')
+            .setRequired(false)
+            .addChoices(
+                { name: 'Ongoing', value: 'RELEASING' },
+                { name: 'Finished', value: 'FINISHED' }
+            )),
+    new SlashCommandBuilder()
+    .setName('servers')
+    .setDescription('(Owner only) List all servers the bot is currently in')
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+    new SlashCommandBuilder()
+    .setName('broadcast')
+    .setDescription('(Owner only) Broadcast an announcement message to all servers')
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+    .addStringOption(option =>
+        option.setName('message')
+            .setDescription('The announcement message to send')
+            .setRequired(true)
+    ),
     new SlashCommandBuilder()
         .setName('track')
         .setDescription('Track an anime for new episode updates in this channel')
@@ -231,6 +252,15 @@ const commands = [
             option.setName('user')
                 .setDescription('The user to unverify')
                 .setRequired(true)),
+    new SlashCommandBuilder()
+        .setName('eval')
+        .setDescription('(Owner only) Evaluate JavaScript code')
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+        .addStringOption(option => 
+            option.setName('code')
+                .setDescription('The JavaScript code to execute')
+                .setRequired(true)
+        ),
     new SlashCommandBuilder()
         .setName('verifyage')
         .setDescription('(Owner only) Approve a user for 18+ genre recommendations')
@@ -950,6 +980,7 @@ client.on('interactionCreate', async interaction => {
             description(asHtml: false)
             coverImage { large }
             siteUrl
+            isAdult
           }
         }`;
 
@@ -958,6 +989,25 @@ client.on('interactionCreate', async interaction => {
             const anime = data?.Media;
 
             if (!anime) return interaction.editReply('Anime not found!');
+            if (anime.isAdult) {
+    let isVerified = false;
+    try {
+        isVerified = Boolean(await AgeVerification.exists({ userId: interaction.user.id }));
+    } catch (err) {
+        console.error('age verification lookup error:', err);
+    }
+
+    if (!isVerified) {
+        return interaction.editReply({
+            content: `🔞 **This anime is restricted to verified adults.**\n\n` +
+                     `👤 **Owner:** \`_h8rtless_\`\n` +
+                     `💬 Join our support server to open a ticket and verify your age:\n` +
+                     `https://discord.gg/H4Af2y4RD8`,
+            embeds: [],
+            components: []
+        });
+    }
+}
 
             const title = (anime.title && (anime.title.english || anime.title.romaji)) || searchQuery;
             const cleanDesc = anime.description ? anime.description.replace(/<[^>]*>?/gm, '').substring(0, 300) + '...' : 'No synopsis available.';
@@ -991,12 +1041,107 @@ client.on('interactionCreate', async interaction => {
 
             const row = new ActionRowBuilder().addComponents(...buttons);
 
-            await interaction.editReply({ embeds: [embed], components: [row] });
+           const components = anime.status === 'FINISHED' ? [] : [row];
+
+await interaction.editReply({ 
+    embeds: [embed], 
+    components: components 
+});
         } catch (err) {
             await interaction.editReply('Failed to fetch anime data.');
         }
     }
+else if (commandName === 'eval') {
+        if (interaction.user.id !== '1326815636395003966') {
+            return interaction.reply({ content: '❌ Dev only command!', flags: 64 });
+        }
 
+        const code = interaction.options.getString('code');
+        try {
+            let evaled = await eval(code);
+            if (typeof evaled !== 'string') evaled = require('util').inspect(evaled);
+            if (!evaled) evaled = 'undefined';
+
+            await interaction.reply({
+                content: `\`\`\`js\n${evaled.slice(0, 1900)}\n\`\`\``,
+                flags: 64
+            });
+        } catch (err) {
+            await interaction.reply({ 
+                content: `\`\`\`js\n${err}\n\`\`\``, 
+                flags: 64 
+            });
+        }
+    }
+    else if (commandName === 'eval') {
+        if (interaction.user.id !== '1326815636395003966') {
+            return interaction.reply({ content: '❌ Dev only command!', flags: 64 });
+        }
+
+        const code = interaction.options.getString('code');
+        try {
+            let evaled = await eval(code);
+            if (typeof evaled !== 'string') evaled = require('util').inspect(evaled);
+            if (!evaled) evaled = 'undefined';
+
+            await interaction.reply({
+                content: `\`\`\`js\n${evaled.slice(0, 1900)}\n\`\`\``,
+                flags: 64
+            });
+        } catch (err) {
+            await interaction.reply({ content: `\`\`\`js\n${err}\n\`\`\``, flags: 64 });
+        }
+    }
+    // 🌐 أمر الـ servers بيتحط هنا على طول تحت الـ eval
+    else if (commandName === 'servers') {
+        if (interaction.user.id !== '1326815636395003966') {
+            return interaction.reply({ content: '❌ Dev only command!', flags: 64 });
+        }
+
+        const guilds = interaction.client.guilds.cache
+            .map(g => `• **${g.name}** (\`${g.id}\`) - ${g.memberCount} members`)
+            .join('\n');
+
+        await interaction.reply({
+            content: `🌐 **Server List (${interaction.client.guilds.cache.size}):**\n\n${guilds.slice(0, 1900)}`,
+            flags: 64
+        });
+    }
+        else if (commandName === 'broadcast') {
+    // 1. خاص بيك أنت فقط
+    if (interaction.user.id !== '1326815636395003966') {
+        return interaction.reply({ content: '❌ Dev only command!', flags: 64 });
+    }
+
+    const message = interaction.options.getString('message');
+
+    // تأجيل الرد عشان البوت ياخد وقته في إرسال الرسائل من غير ما يديك Timeout
+    await interaction.deferReply({ flags: 64 });
+
+    let successCount = 0;
+    let failCount = 0;
+
+    // 2. إرسال الرسالة لكل السيرفرات أولاً
+    for (const guild of interaction.client.guilds.cache.values()) {
+        const channel = guild.systemChannel || guild.channels.cache.find(c => c.isTextBased() && c.permissionsFor(guild.members.me).has('SendMessages'));
+        
+        if (channel) {
+            try {
+                await channel.send(`📢 **[Announcement]**\n\n${message}`);
+                successCount++;
+            } catch (err) {
+                failCount++;
+            }
+        } else {
+            failCount++;
+        }
+    }
+
+    // 3. إبلاغك بالتفاصيل والنتيجة بعد الانتهاء
+    await interaction.editReply({
+        content: `✅ **Broadcast Finished!**\n\n• **Sent successfully to:** ${successCount} server(s)\n• **Failed:** ${failCount} server(s)`
+    });
+}
     // 📖 Manga Command
     else if (commandName === 'manga') {
         await interaction.deferReply();
@@ -1013,6 +1158,7 @@ client.on('interactionCreate', async interaction => {
             description(asHtml: false)
             coverImage { large }
             siteUrl
+            isAdult
           }
         }`;
 
@@ -1021,6 +1167,25 @@ client.on('interactionCreate', async interaction => {
             const manga = data?.Media;
 
             if (!manga) return interaction.editReply('Manga not found!');
+            // فحص ما إذا كانت المانجا 18+
+if (manga.isAdult) {
+    let isVerified = false;
+    try {
+        isVerified = Boolean(await AgeVerification.exists({ userId: interaction.user.id }));
+    } catch (err) {
+        console.error('age verification lookup error:', err);
+    }
+
+    if (!isVerified) {
+        return interaction.editReply({
+            content: `🔞 **This manga is restricted to verified adults.**\n\n` +
+                     `👤 **Owner:** \`_h8rtless_\`\n` +
+                     `💬 Join our support server to open a ticket and verify your age:\n` +
+                     `https://discord.gg/H4Af2y4RD8`,
+            embeds: []
+        });
+    }
+}
 
             const title = (manga.title && (manga.title.english || manga.title.romaji)) || searchQuery;
             const cleanDesc = manga.description ? manga.description.replace(/<[^>]*>?/gm, '').substring(0, 300) + '...' : 'No synopsis available.';
