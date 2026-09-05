@@ -58,7 +58,7 @@ const GENRE_OPTIONS = [
     { value: 'Shojo', label: 'Shojo', description: 'Romance-focused stories for young audiences', filterType: 'tag', apiValue: 'Shoujo' },
     { value: 'Isekai', label: 'Isekai', description: 'Characters transported to another world', filterType: 'tag', apiValue: 'Isekai' },
     { value: 'Ecchi', label: 'Ecchi 🔞', description: '18+ mature fan-service themes', filterType: 'genre', apiValue: 'Ecchi', adultOnly: true },
-    { value: 'Hentai', label: 'Hentai 🔞', description: '18+ explicit adult themes', filterType: 'tag', apiValue: 'Hentai', adultOnly: true }
+    { value: 'Hentai', label: 'Hentai 🔞', description: '18+ explicit adult themes', filterType: 'genre', apiValue: 'Hentai', adultOnly: true }
 ];
 
 // 2. دالة تصفية التصنيفات بناءً على توثيق العمر (خارج المصفوفة)
@@ -224,6 +224,13 @@ const commands = [
         .setName('testalert')
         .setDescription('(Dev only) Manually run the episode-alert check right now')
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+    new SlashCommandBuilder()
+        .setName('unverifyage')
+        .setDescription('(Owner only) Remove 18+ age verification for a user')
+        .addUserOption(option =>
+            option.setName('user')
+                .setDescription('The user to unverify')
+                .setRequired(true))
     new SlashCommandBuilder()
         .setName('verifyage')
         .setDescription('(Owner only) Approve a user for 18+ genre recommendations')
