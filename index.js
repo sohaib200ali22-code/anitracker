@@ -1108,36 +1108,39 @@ else if (commandName === 'eval') {
         });
     }
         else if (commandName === 'broadcast') {
-    // 1. خاص بيك أنت فقط
     if (interaction.user.id !== '1326815636395003966') {
         return interaction.reply({ content: '❌ Dev only command!', flags: 64 });
     }
 
     const message = interaction.options.getString('message');
-
-    // تأجيل الرد عشان البوت ياخد وقته في إرسال الرسائل من غير ما يديك Timeout
     await interaction.deferReply({ flags: 64 });
 
     let successCount = 0;
     let failCount = 0;
 
-    // 2. إرسال الرسالة لكل السيرفرات أولاً
     for (const guild of interaction.client.guilds.cache.values()) {
-        const channel = guild.systemChannel || guild.channels.cache.find(c => c.isTextBased() && c.permissionsFor(guild.members.me).has('SendMessages'));
-        
-        if (channel) {
-            try {
-                await channel.send(`📢 **[Announcement]**\n\n${message}`);
+        try {
+            // جلب كل القنوات للتأكد إن الـ Cache مليان مش فاضي
+            const channels = await guild.channels.fetch();
+            
+            // البحث عن أفضل قناة متاحة للإرسال فيها
+            const targetChannel = channels.find(
+                c => c && c.isTextBased() && c.permissionsFor(guild.members.me)?.has(['ViewChannel', 'SendMessages'])
+            );
+
+            if (targetChannel) {
+                await targetChannel.send(`📢 **[Announcement]**\n\n${message}`);
                 successCount++;
-            } catch (err) {
+            } else {
+                console.error(`No permissions/channels found in: ${guild.name}`);
                 failCount++;
             }
-        } else {
+        } catch (err) {
+            console.error(`Error processing guild ${guild.name}:`, err.message);
             failCount++;
         }
     }
 
-    // 3. إبلاغك بالتفاصيل والنتيجة بعد الانتهاء
     await interaction.editReply({
         content: `✅ **Broadcast Finished!**\n\n• **Sent successfully to:** ${successCount} server(s)\n• **Failed:** ${failCount} server(s)`
     });
