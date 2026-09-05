@@ -621,10 +621,13 @@ client.on('interactionCreate', async interaction => {
         }
     }
 
-    // 🔞 Owner-controlled age verification (Approve)
+   // 🔞 Owner-controlled age verification (Approve)
     else if (commandName === 'verifyage') {
         if (interaction.user.id !== process.env.DEV_USER_ID) {
-            return interaction.reply({ content: '🚫 Only the bot owner can approve age verification, owner username: _h8rtless_.', ephemeral: true });
+            return interaction.reply({ 
+                content: `🚫 Only the bot owner can approve age verification, owner username: \`_h8rtless_\`.\n\n💬 Join our support server to open a ticket and verify your age:\nhttps://discord.gg/H4Af2y4RD8`, 
+                ephemeral: true 
+            });
         }
 
         const user = interaction.options.getUser('user');
@@ -640,47 +643,12 @@ client.on('interactionCreate', async interaction => {
             // 2. إرسال رسالة في الخاص للمستخدم
             let dmSent = true;
             try {
-                await user.send('🎉 **Congratulations!** Your age verification has been approved. You now have access to 18+ content.');
+                await user.send(`🎉 **Age Verification Approved!**\nYour account has been verified by the owner. You can now request and view 18+ adult genre recommendations linked to AniList.`);
             } catch (dmErr) {
                 dmSent = false; // في حال كان الخاص مقفول عند المستخدم
             }
 
             // 3. الرد على الأدمن
-            const dmStatusText = dmSent ? '📬 DM notification sent to the user.' : '⚠️ Could not send DM (User DMs might be closed).';
-            await interaction.reply({
-                content: `✅ **${user.tag}** is now approved for 18+ genre recommendations.\n${dmStatusText}`,
-                ephemeral: true
-            });
-
-        } catch (err) {
-            console.error('verifyage command error:', err);
-            await interaction.reply({ content: '❌ Could not save the age verification. Please try again.', ephemeral: true });
-        }
-    }
-
-    // 🔞 Owner-controlled age verification (Approve)
-    else if (commandName === 'verifyage') {
-        if (interaction.user.id !== process.env.DEV_USER_ID) {
-            return interaction.reply({ content: '🚫 Only the bot owner can approve age verification, owner username: _h8rtless_.', ephemeral: true });
-        }
-
-        const user = interaction.options.getUser('user');
-
-        try {
-            await AgeVerification.updateOne(
-                { userId: user.id },
-                { $set: { userId: user.id, verifiedAt: new Date() } },
-                { upsert: true }
-            );
-
-            // إرسال رسالة DM للمستخدم لتأكيد التوثيق وفك الحجب عن المحتوى
-            let dmSent = true;
-            try {
-                await user.send(`🎉 **Age Verification Approved!**\nYour account has been verified by the owner. You can now request and view 18+ adult genre recommendations linked to AniList.`);
-            } catch (dmErr) {
-                dmSent = false;
-            }
-
             const dmStatusText = dmSent ? '📬 DM notification sent.' : '⚠️ Could not send DM (User DMs are closed).';
             await interaction.reply({
                 content: `✅ **${user.tag}** is now approved for 18+ AniList genre recommendations.\n${dmStatusText}`,
@@ -692,7 +660,7 @@ client.on('interactionCreate', async interaction => {
             await interaction.reply({ content: '❌ Could not save the age verification. Please try again.', ephemeral: true });
         }
     }
-
+        
     // 🚫 Owner-controlled age unverification (Remove)
     else if (commandName === 'unverifyage') {
         if (interaction.user.id !== process.env.DEV_USER_ID) {
