@@ -1,4 +1,3 @@
-```js
 const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, ActivityType, PermissionFlagsBits } = require('discord.js');
 const axios = require('axios');
 const http = require('http');
@@ -520,8 +519,7 @@ client.on('interactionCreate', async interaction => {
 
                 // FIX: full bio, not cut off — same spoiler/HTML cleanup as the
                 // main /character command, capped only at Discord's hard embed
-                // description limit (4096 chars) as a safety net, not a real
-                // truncation.
+                // description limit (4096 chars) as a safety net, not a real truncation.
                 let cleanDesc = char.description ? char.description
                     .replace(/~!/g, '||')
                     .replace(/!~/g, '||')
@@ -771,7 +769,6 @@ client.on('interactionCreate', async interaction => {
             await interaction.editReply('Failed to add to personal favorites.');
         }
     }
-
     // ❌ Unfavorite Command
     else if (commandName === 'unfavorite') {
         await interaction.deferReply({ ephemeral: true });
@@ -1242,4 +1239,3 @@ async function checkUpdates() {
 
 // Log in to Discord
 client.login(process.env.DISCORD_TOKEN);
-```
