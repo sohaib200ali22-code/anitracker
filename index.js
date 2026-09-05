@@ -42,6 +42,7 @@ const AgeVerificationSchema = new mongoose.Schema({
 });
 const AgeVerification = mongoose.model('AgeVerification', AgeVerificationSchema);
 
+// 1. تعريف مصفوفة التصنيفات
 const GENRE_OPTIONS = [
     { value: 'Action', label: 'Action', description: 'High-stakes battles and heroic conflicts', filterType: 'genre', apiValue: 'Action' },
     { value: 'Adventure', label: 'Adventure', description: 'Journeys, quests, and exploration', filterType: 'genre', apiValue: 'Adventure' },
@@ -60,10 +61,18 @@ const GENRE_OPTIONS = [
     { value: 'Hentai', label: 'Hentai 🔞', description: '18+ explicit adult themes', filterType: 'tag', apiValue: 'Hentai', adultOnly: true }
 ];
 
+// 2. دالة تصفية التصنيفات بناءً على توثيق العمر (خارج المصفوفة)
+async function getAvailableGenres(userId) {
+    const isVerified = await AgeVerification.findOne({ userId });
+    
+    // لو موثق يرجع كل التصنيفات، لو مش موثق يستبعد خيارات adultOnly
+    return GENRE_OPTIONS.filter(option => isVerified || !option.adultOnly);
+}
+
+// 3. دالة البحث عن تعريف التصنيف
 function getGenreDefinition(value) {
     return GENRE_OPTIONS.find(option => option.value === value);
 }
-
 function buildMediaTypeMenu() {
     const menu = new StringSelectMenuBuilder()
         .setCustomId('genre_media_select')
