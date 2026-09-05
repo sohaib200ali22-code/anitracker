@@ -1,5 +1,3 @@
-تمام، ده **الكود المعدل كاملًا**. انسخه كله واستبدل به ملف البوت عندك:
-
 ```js
 const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, ActivityType, PermissionFlagsBits } = require('discord.js');
 const axios = require('axios');
