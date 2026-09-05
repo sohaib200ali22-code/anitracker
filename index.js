@@ -1,4 +1,7 @@
-const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ActivityType, PermissionFlagsBits } = require('discord.js');
+تمام، ده **الكود المعدل كاملًا**. انسخه كله واستبدل به ملف البوت عندك:
+
+```js
+const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, ActivityType, PermissionFlagsBits } = require('discord.js');
 const axios = require('axios');
 const http = require('http');
 const mongoose = require('mongoose');
@@ -34,6 +37,68 @@ const FavoriteSchema = new mongoose.Schema({
     lastEpisodes: Number
 });
 const FavoriteItem = mongoose.model('FavoriteItem', FavoriteSchema);
+
+// Manual age verification for the 18+ recommendation categories.
+const AgeVerificationSchema = new mongoose.Schema({
+    userId: { type: String, unique: true },
+    verifiedAt: { type: Date, default: Date.now }
+});
+const AgeVerification = mongoose.model('AgeVerification', AgeVerificationSchema);
+
+const GENRE_OPTIONS = [
+    { value: 'Action', label: 'Action', description: 'High-stakes battles and heroic conflicts', filterType: 'genre', apiValue: 'Action' },
+    { value: 'Adventure', label: 'Adventure', description: 'Journeys, quests, and exploration', filterType: 'genre', apiValue: 'Adventure' },
+    { value: 'Comedy', label: 'Comedy', description: 'Humor, jokes, and funny situations', filterType: 'genre', apiValue: 'Comedy' },
+    { value: 'Drama', label: 'Drama', description: 'Emotional conflict and serious stories', filterType: 'genre', apiValue: 'Drama' },
+    { value: 'Fantasy', label: 'Fantasy', description: 'Magic, myths, and imaginary worlds', filterType: 'genre', apiValue: 'Fantasy' },
+    { value: 'Romance', label: 'Romance', description: 'Love stories and relationships', filterType: 'genre', apiValue: 'Romance' },
+    { value: 'Sci-Fi', label: 'Sci-Fi', description: 'Technology, space, and future worlds', filterType: 'genre', apiValue: 'Sci-Fi' },
+    { value: 'Horror', label: 'Horror', description: 'Fear, suspense, and dark themes', filterType: 'genre', apiValue: 'Horror' },
+    { value: 'Sports', label: 'Sports', description: 'Competition, training, and teamwork', filterType: 'genre', apiValue: 'Sports' },
+    { value: 'Slice of Life', label: 'Slice of Life', description: 'Everyday life and relatable moments', filterType: 'genre', apiValue: 'Slice Of Life' },
+    { value: 'Shonen', label: 'Shonen', description: 'Action-focused stories for young audiences', filterType: 'tag', apiValue: 'Shounen' },
+    { value: 'Shojo', label: 'Shojo', description: 'Romance-focused stories for young audiences', filterType: 'tag', apiValue: 'Shoujo' },
+    { value: 'Isekai', label: 'Isekai', description: 'Characters transported to another world', filterType: 'tag', apiValue: 'Isekai' },
+    { value: 'Ecchi', label: 'Ecchi 🔞', description: '18+ mature fan-service themes', filterType: 'genre', apiValue: 'Ecchi', adultOnly: true },
+    { value: 'Hentai', label: 'Hentai 🔞', description: '18+ explicit adult themes', filterType: 'tag', apiValue: 'Hentai', adultOnly: true }
+];
+
+function getGenreDefinition(value) {
+    return GENRE_OPTIONS.find(option => option.value === value);
+}
+
+function buildMediaTypeMenu() {
+    const menu = new StringSelectMenuBuilder()
+        .setCustomId('genre_media_select')
+        .setPlaceholder('Choose Anime or Manga')
+        .addOptions(
+            {
+                label: 'Anime',
+                value: 'anime',
+                description: 'Get an anime recommendation by category'
+            },
+            {
+                label: 'Manga',
+                value: 'manga',
+                description: 'Get a manga recommendation by category'
+            }
+        );
+
+    return new ActionRowBuilder().addComponents(menu);
+}
+
+function buildGenreMenu(mediaType) {
+    const menu = new StringSelectMenuBuilder()
+        .setCustomId(`genre_select_${mediaType}`)
+        .setPlaceholder(`Choose a ${mediaType} category`)
+        .addOptions(GENRE_OPTIONS.map(option => ({
+            label: option.label,
+            value: option.value,
+            description: option.description
+        })));
+
+    return new ActionRowBuilder().addComponents(menu);
+}
 
 // FIX: removed GatewayIntentBits.GuildPresences — it's a privileged intent that
 // requires manual approval/toggling in the Discord Developer Portal, and nothing
@@ -126,22 +191,7 @@ const commands = [
                 .setRequired(true)),
     new SlashCommandBuilder()
         .setName('genre')
-        .setDescription('Find a highly-rated anime by genre')
-        .addStringOption(option =>
-            option.setName('category')
-                .setDescription('Choose a genre')
-                .setRequired(true)
-                .addChoices(
-                    { name: 'Action', value: 'Action' },
-                    { name: 'Adventure', value: 'Adventure' },
-                    { name: 'Comedy', value: 'Comedy' },
-                    { name: 'Fantasy', value: 'Fantasy' },
-                    { name: 'Romance', value: 'Romance' },
-                    { name: 'Sci-Fi', value: 'Sci-Fi' },
-                    { name: 'Horror', value: 'Horror' },
-                    { name: 'Sports', value: 'Sports' },
-                    { name: 'Slice of Life', value: 'Slice of Life' }
-                )),
+        .setDescription('Choose Anime or Manga, then get a recommendation by category'),
     new SlashCommandBuilder()
         .setName('track')
         .setDescription('Track an anime for new episode updates in this channel')
@@ -167,6 +217,14 @@ const commands = [
     new SlashCommandBuilder()
         .setName('testalert')
         .setDescription('(Dev only) Manually run the episode-alert check right now')
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+    new SlashCommandBuilder()
+        .setName('verifyage')
+        .setDescription('(Owner only) Approve a user for 18+ genre recommendations')
+        .addUserOption(option =>
+            option.setName('user')
+                .setDescription('User who completed age verification in DMs')
+                .setRequired(true))
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
 ].map(command => command.toJSON());
 
@@ -193,9 +251,150 @@ client.once('ready', async () => {
 });
 
 client.on('interactionCreate', async interaction => {
+    // 🎲 Genre recommendation menus
+    if (interaction.isStringSelectMenu()) {
+        if (interaction.customId === 'genre_media_select') {
+            const mediaType = interaction.values[0];
+            return interaction.update({
+                content: `📚 You chose **${mediaType === 'anime' ? 'Anime' : 'Manga'}**. Now choose a category:`,
+                components: [buildGenreMenu(mediaType)]
+            });
+        }
+
+        if (interaction.customId.startsWith('genre_select_')) {
+            const mediaType = interaction.customId.replace('genre_select_', '');
+            const genreChoice = interaction.values[0];
+            const genreDefinition = getGenreDefinition(genreChoice);
+
+            if (!genreDefinition) {
+                return interaction.update({
+                    content: '❌ That category is no longer available. Please run `/genre` again.',
+                    components: []
+                });
+            }
+
+            if (genreDefinition.adultOnly) {
+                let isVerified = false;
+                try {
+                    isVerified = Boolean(await AgeVerification.exists({ userId: interaction.user.id }));
+                } catch (err) {
+                    console.error('age verification lookup error:', err);
+                    return interaction.update({
+                        content: '❌ I could not check your age verification right now. Please try again later.',
+                        components: []
+                    });
+                }
+
+                if (!isVerified) {
+                    return interaction.update({
+                        content: '🔞 This category is restricted to verified adults. Please talk to the bot owner in DMs for age verification first.',
+                        components: []
+                    });
+                }
+
+                if (interaction.guildId) {
+                    return interaction.update({
+                        content: '🔞 18+ recommendations are available in DMs only. Please run `/genre` in a DM after your age has been verified.',
+                        components: []
+                    });
+                }
+            }
+
+            await interaction.deferUpdate();
+
+            const gqlQuery = `
+            query ($type: MediaType, $genre: String, $tag: String) {
+              Page (page: 1, perPage: 10) {
+                media (type: $type, genre: $genre, tag: $tag, sort: SCORE_DESC) {
+                  id
+                  title { romaji english }
+                  episodes
+                  chapters
+                  status
+                  averageScore
+                  description(asHtml: false)
+                  coverImage { large }
+                  siteUrl
+                }
+              }
+            }`;
+
+            try {
+                const data = await fetchAniList(gqlQuery, {
+                    type: mediaType === 'manga' ? 'MANGA' : 'ANIME',
+                    genre: genreDefinition.filterType === 'genre' ? genreDefinition.apiValue : null,
+                    tag: genreDefinition.filterType === 'tag' ? genreDefinition.apiValue : null
+                });
+                const mediaList = data?.Page?.media;
+
+                if (!mediaList || mediaList.length === 0) {
+                    return interaction.editReply({
+                        content: `No ${mediaType} found for **${genreDefinition.label}**.`,
+                        components: []
+                    });
+                }
+
+                const media = mediaList[Math.floor(Math.random() * mediaList.length)];
+                const title = (media.title && (media.title.english || media.title.romaji)) || `${mediaType} title`;
+                const cleanDesc = media.description
+                    ? media.description.replace(/<[^>]*>?/gm, '').substring(0, 300) + '...'
+                    : 'No synopsis available.';
+
+                const embed = new EmbedBuilder()
+                    .setTitle(`🎭 ${genreDefinition.label} ${mediaType === 'anime' ? 'Anime' : 'Manga'} Recommendation: ${title}`)
+                    .setURL(media.siteUrl || 'https://anilist.co')
+                    .setThumbnail(media.coverImage?.large || 'https://i.imgur.com/AGv4yDI.png')
+                    .addFields(
+                        {
+                            name: mediaType === 'anime' ? 'Episodes' : 'Chapters',
+                            value: `${mediaType === 'anime' ? (media.episodes ?? 'N/A') : (media.chapters ?? 'N/A')}`,
+                            inline: true
+                        },
+                        { name: 'Status', value: media.status || 'N/A', inline: true },
+                        { name: 'Score', value: media.averageScore ? `${media.averageScore} / 100` : 'N/A', inline: true }
+                    )
+                    .setDescription(cleanDesc)
+                    .setColor(genreDefinition.adultOnly ? '#8e44ad' : '#1abc9c');
+
+                const components = [];
+                if (mediaType === 'anime') {
+                    const trackBtn = new ButtonBuilder()
+                        .setCustomId(`track_btn_${media.id}`)
+                        .setLabel('🎯 Channel Track')
+                        .setStyle(ButtonStyle.Success);
+
+                    const favBtn = new ButtonBuilder()
+                        .setCustomId(`fav_btn_${media.id}`)
+                        .setLabel('⭐ Favorite (DM Alert)')
+                        .setStyle(ButtonStyle.Primary);
+
+                    const buttons = [favBtn];
+                    if (interaction.guildId) buttons.unshift(trackBtn);
+                    components.push(new ActionRowBuilder().addComponents(...buttons));
+                }
+
+                await interaction.editReply({ content: '', embeds: [embed], components });
+            } catch (err) {
+                console.error('genre recommendation error:', err);
+                await interaction.editReply({
+                    content: '❌ Failed to fetch this recommendation. Please try `/genre` again.',
+                    components: []
+                });
+            }
+        }
+        return;
+    }
+
     // 🔘 Handle Interactive Buttons
     if (interaction.isButton()) {
         if (interaction.customId.startsWith('track_btn_')) {
+            if (!interaction.guildId) {
+                return interaction.reply({
+                    content: '🎯 Channel tracking works inside a server. Use `/favorite <title>` for personal DM alerts.',
+                    ephemeral: true
+                });
+            }
+
             await interaction.deferReply({ ephemeral: true });
             const animeId = parseInt(interaction.customId.replace('track_btn_', ''));
 
@@ -323,7 +522,8 @@ client.on('interactionCreate', async interaction => {
 
                 // FIX: full bio, not cut off — same spoiler/HTML cleanup as the
                 // main /character command, capped only at Discord's hard embed
-                // description limit (4096 chars) as a safety net, not a real truncation.
+                // description limit (4096 chars) as a safety net, not a real
+                // truncation.
                 let cleanDesc = char.description ? char.description
                     .replace(/~!/g, '||')
                     .replace(/!~/g, '||')
@@ -375,7 +575,7 @@ client.on('interactionCreate', async interaction => {
             .setDescription('Your ultimate Discord companion for anime search, recommendations, and automatic episode notifications!')
             .addFields(
                 { name: '✨ What can AniTracker do?', value: '• Search Anime & Manga details instantly.\n• Track anime in server channels for group alerts.\n• Add anime to personal favorites for **Direct Message (DM)** updates.\n• Find random high-rated anime by category/genre.' },
-                { name: '📚 Quick Start Commands', value: '`/anime` - Search any anime\n`/genre` - Discover by genre\n`/track` - Track in channel\n`/favorite <title>` - Track in DMs\n`/help` - Show full commands list' },
+                { name: '📚 Quick Start Commands', value: '`/anime` - Search any anime\n`/manga` - Search any manga\n`/genre` - Choose Anime/Manga, then a category\n`/track` - Track anime in a server channel\n`/favorite <title>` - Receive personal DM updates\n`/help` - Show full commands list' },
                 { name: '🐛 Report a Problem or Request Features', value: 'If you encounter any bugs, issues, or have suggestions, please visit the support server for more help.' }
             )
             .setColor('#2ecc71')
@@ -388,6 +588,10 @@ client.on('interactionCreate', async interaction => {
             .setURL('https://discord.gg/H4Af2y4RD8');
 
         const row = new ActionRowBuilder().addComponents(supportBtn);
+
+        if (!interaction.guildId) {
+            return interaction.reply({ embeds: [embed], components: [row] });
+        }
 
         try {
             await interaction.user.send({ embeds: [embed], components: [row] });
@@ -402,6 +606,31 @@ client.on('interactionCreate', async interaction => {
                 components: [row],
                 ephemeral: true
             });
+        }
+    }
+
+    // 🔞 Owner-controlled age verification
+    else if (commandName === 'verifyage') {
+        if (interaction.user.id !== process.env.DEV_USER_ID) {
+            return interaction.reply({ content: '🚫 Only the bot owner can approve age verification.', ephemeral: true });
+        }
+
+        const user = interaction.options.getUser('user');
+
+        try {
+            await AgeVerification.updateOne(
+                { userId: user.id },
+                { $set: { userId: user.id, verifiedAt: new Date() } },
+                { upsert: true }
+            );
+
+            await interaction.reply({
+                content: `✅ **${user.tag}** is now approved for 18+ genre recommendations. This approval is only for the bot's adult-category gate.`,
+                ephemeral: true
+            });
+        } catch (err) {
+            console.error('verifyage command error:', err);
+            await interaction.reply({ content: '❌ Could not save the age verification. Please try again.', ephemeral: true });
         }
     }
 
@@ -544,6 +773,7 @@ client.on('interactionCreate', async interaction => {
             await interaction.editReply('Failed to add to personal favorites.');
         }
     }
+
     // ❌ Unfavorite Command
     else if (commandName === 'unfavorite') {
         await interaction.deferReply({ ephemeral: true });
@@ -611,7 +841,7 @@ client.on('interactionCreate', async interaction => {
                 { name: '🔍 `/anime <title>`', value: 'Search for anime details, quick track, or add to favorites.', inline: false },
                 { name: '📖 `/manga <title>`', value: 'Search for manga details.', inline: false },
                 { name: '🎭 `/character <name>`', value: 'Search for anime characters.', inline: false },
-                { name: '🎲 `/genre <category>`', value: 'Find top-rated anime filtered by genre.', inline: false },
+                { name: '🎲 `/genre`', value: 'Choose Anime or Manga, then pick a category for a recommendation. Ecchi/Hentai require manual age verification in DMs.', inline: false },
                 { name: '🎯 `/track <title>`', value: 'Track an anime for notifications in this channel.', inline: false },
                 { name: '🛑 `/untrack <title>`', value: 'Stop tracking an anime in this channel.', inline: false },
                 { name: '📌 `/mytracked`', value: 'Show all anime currently tracked in this server.', inline: false }
@@ -686,7 +916,12 @@ client.on('interactionCreate', async interaction => {
                 .setLabel('⭐ Favorite (DM Alert)')
                 .setStyle(ButtonStyle.Primary);
 
-            const row = new ActionRowBuilder().addComponents(trackBtn, favBtn);
+            const buttons = [favBtn];
+            if (interaction.guildId) {
+                buttons.unshift(trackBtn);
+            }
+
+            const row = new ActionRowBuilder().addComponents(...buttons);
 
             await interaction.editReply({ embeds: [embed], components: [row] });
         } catch (err) {
@@ -742,67 +977,11 @@ client.on('interactionCreate', async interaction => {
 
     // 🎲 Genre Command
     else if (commandName === 'genre') {
-        await interaction.deferReply();
-        const genreChoice = interaction.options.getString('category');
-
-        // FIX: added status: RELEASING so /genre only ever suggests anime that
-        // is currently airing/ongoing, never anime that has already finished.
-        const gqlQuery = `
-        query ($genre: String) {
-          Page (page: 1, perPage: 10) {
-            media (genre: $genre, type: ANIME, status: RELEASING, sort: SCORE_DESC) {
-              id
-              title { romaji english }
-              episodes
-              status
-              averageScore
-              description(asHtml: false)
-              coverImage { large }
-              siteUrl
-            }
-          }
-        }`;
-
-        try {
-            const data = await fetchAniList(gqlQuery, { genre: genreChoice });
-            const mediaList = data?.Page?.media;
-
-            if (!mediaList || mediaList.length === 0) {
-                return interaction.editReply(`No currently-airing anime found for genre: ${genreChoice}`);
-            }
-
-            const anime = mediaList[Math.floor(Math.random() * mediaList.length)];
-            const title = (anime.title && (anime.title.english || anime.title.romaji)) || 'Anime Title';
-            const cleanDesc = anime.description ? anime.description.replace(/<[^>]*>?/gm, '').substring(0, 300) + '...' : 'No synopsis available.';
-
-            const embed = new EmbedBuilder()
-                .setTitle(`🎭 ${genreChoice} Recommendation: ${title}`)
-                .setURL(anime.siteUrl || 'https://anilist.co')
-                .setThumbnail(anime.coverImage?.large || 'https://i.imgur.com/AGv4yDI.png')
-                .addFields(
-                    { name: 'Episodes', value: `${anime.episodes ?? 'N/A'}`, inline: true },
-                    { name: 'Status', value: anime.status || 'N/A', inline: true },
-                    { name: 'Score', value: anime.averageScore ? `${anime.averageScore} / 100` : 'N/A', inline: true }
-                )
-                .setDescription(cleanDesc)
-                .setColor('#1abc9c');
-
-            const trackBtn = new ButtonBuilder()
-                .setCustomId(`track_btn_${anime.id}`)
-                .setLabel('🎯 Channel Track')
-                .setStyle(ButtonStyle.Success);
-
-            const favBtn = new ButtonBuilder()
-                .setCustomId(`fav_btn_${anime.id}`)
-                .setLabel('⭐ Favorite (DM Alert)')
-                .setStyle(ButtonStyle.Primary);
-
-            const row = new ActionRowBuilder().addComponents(trackBtn, favBtn);
-
-            await interaction.editReply({ embeds: [embed], components: [row] });
-        } catch (err) {
-            await interaction.editReply('Failed to fetch genre recommendations.');
-        }
+        await interaction.reply({
+            content: '📚 First choose what you want to discover:',
+            components: [buildMediaTypeMenu()],
+            ephemeral: true
+        });
     }
 
     // 🎯 Track Command
@@ -1065,3 +1244,4 @@ async function checkUpdates() {
 
 // Log in to Discord
 client.login(process.env.DISCORD_TOKEN);
+```
