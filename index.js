@@ -605,10 +605,47 @@ client.on('interactionCreate', async interaction => {
         }
     }
 
-    // 🔞 Owner-controlled age verification
+    // 🔞 Owner-controlled age verification (Approve)
     else if (commandName === 'verifyage') {
         if (interaction.user.id !== process.env.DEV_USER_ID) {
-            return interaction.reply({ content: '🚫 Only the bot owner can approve age verification.', ephemeral: true });
+            return interaction.reply({ content: '🚫 Only the bot owner can approve age verification, owner username: _h8rtless_.', ephemeral: true });
+        }
+
+        const user = interaction.options.getUser('user');
+
+        try {
+            // 1. التحديث في قاعدة البيانات
+            await AgeVerification.updateOne(
+                { userId: user.id },
+                { $set: { userId: user.id, verifiedAt: new Date() } },
+                { upsert: true }
+            );
+
+            // 2. إرسال رسالة في الخاص للمستخدم
+            let dmSent = true;
+            try {
+                await user.send('🎉 **Congratulations!** Your age verification has been approved. You now have access to 18+ content.');
+            } catch (dmErr) {
+                dmSent = false; // في حال كان الخاص مقفول عند المستخدم
+            }
+
+            // 3. الرد على الأدمن
+            const dmStatusText = dmSent ? '📬 DM notification sent to the user.' : '⚠️ Could not send DM (User DMs might be closed).';
+            await interaction.reply({
+                content: `✅ **${user.tag}** is now approved for 18+ genre recommendations.\n${dmStatusText}`,
+                ephemeral: true
+            });
+
+        } catch (err) {
+            console.error('verifyage command error:', err);
+            await interaction.reply({ content: '❌ Could not save the age verification. Please try again.', ephemeral: true });
+        }
+    }
+
+    // 🔞 Owner-controlled age verification (Approve)
+    else if (commandName === 'verifyage') {
+        if (interaction.user.id !== process.env.DEV_USER_ID) {
+            return interaction.reply({ content: '🚫 Only the bot owner can approve age verification, owner username: _h8rtless_.', ephemeral: true });
         }
 
         const user = interaction.options.getUser('user');
@@ -620,17 +657,69 @@ client.on('interactionCreate', async interaction => {
                 { upsert: true }
             );
 
+            // إرسال رسالة DM للمستخدم لتأكيد التوثيق وفك الحجب عن المحتوى
+            let dmSent = true;
+            try {
+                await user.send(`🎉 **Age Verification Approved!**\nYour account has been verified by the owner. You can now request and view 18+ adult genre recommendations linked to AniList.`);
+            } catch (dmErr) {
+                dmSent = false;
+            }
+
+            const dmStatusText = dmSent ? '📬 DM notification sent.' : '⚠️ Could not send DM (User DMs are closed).';
             await interaction.reply({
-                content: `✅ **${user.tag}** is now approved for 18+ genre recommendations. This approval is only for the bot's adult-category gate.`,
+                content: `✅ **${user.tag}** is now approved for 18+ AniList genre recommendations.\n${dmStatusText}`,
                 ephemeral: true
             });
+
         } catch (err) {
             console.error('verifyage command error:', err);
             await interaction.reply({ content: '❌ Could not save the age verification. Please try again.', ephemeral: true });
         }
     }
 
-    // 🎭 Character Search Command (Updated to AniList API for 100% stability)
+    // 🚫 Owner-controlled age unverification (Remove)
+    else if (commandName === 'unverifyage') {
+        if (interaction.user.id !== process.env.DEV_USER_ID) {
+            return interaction.reply({ content: '🚫 Only the bot owner can remove age verification.', ephemeral: true });
+        }
+
+        const user = interaction.options.getUser('user');
+
+        try {
+            // التأكد أولاً إذا كان المستخدم موثق
+            const existingVerification = await AgeVerification.findOne({ userId: user.id });
+
+            if (!existingVerification) {
+                return interaction.reply({
+                    content: `⚠️ **${user.tag}** is not currently age-verified.`,
+                    ephemeral: true
+                });
+            }
+
+            // مسح التوثيق من قاعدة البيانات
+            await AgeVerification.deleteOne({ userId: user.id });
+
+            // إرسال DM للمستخدم لإبلاغه بسحب التوثيق
+            let dmSent = true;
+            try {
+                await user.send(`🔒 **Age Verification Removed.**\nYour 18+ access status for AniList content has been revoked by the bot owner.`);
+            } catch (dmErr) {
+                dmSent = false;
+            }
+
+            const dmStatusText = dmSent ? '📬 DM notification sent.' : '⚠️ Could not send DM (User DMs are closed).';
+            await interaction.reply({
+                content: `🗑️ Age verification removed for **${user.tag}**. 18+ AniList recommendations are now locked for this user.\n${dmStatusText}`,
+                ephemeral: true
+            });
+
+        } catch (err) {
+            console.error('unverifyage command error:', err);
+            await interaction.reply({ content: '❌ Could not remove age verification. Please try again.', ephemeral: true });
+        }
+    }
+   
+        // 🎭 Character Search Command (Updated to AniList API for 100% stability)
     else if (commandName === 'character') {
         const characterName = interaction.options.getString('name');
         await interaction.deferReply();
