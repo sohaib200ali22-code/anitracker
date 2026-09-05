@@ -230,7 +230,7 @@ const commands = [
         .addUserOption(option =>
             option.setName('user')
                 .setDescription('The user to unverify')
-                .setRequired(true))
+                .setRequired(true)),
     new SlashCommandBuilder()
         .setName('verifyage')
         .setDescription('(Owner only) Approve a user for 18+ genre recommendations')
