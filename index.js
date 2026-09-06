@@ -196,9 +196,6 @@ const commands = [
                 .setDescription('Character name')
                 .setRequired(true)),
     new SlashCommandBuilder()
-    .setName('schedule')
-    .setDescription('📅 Displays today\'s anime release schedule!'),
-    new SlashCommandBuilder()
     .setName('genre')
     .setDescription('Choose Anime or Manga, then get a recommendation by category')
     .addStringOption(option =>
@@ -430,67 +427,7 @@ client.on('interactionCreate', async interaction => {
         }
         return;
     }
-    
-// 🌐 Handle Select Menus (Dropdowns)
-if (interaction.isStringSelectMenu()) {
-    if (interaction.customId.startsWith('select_lang_')) {
-        const targetUserId = interaction.customId.split('_')[2];
 
-        if (interaction.user.id !== targetUserId) {
-            return interaction.reply({ content: '❌ You cannot use this menu!', flags: 64 });
-        }
-
-        const selectedLang = interaction.values[0];
-
-        await User.findOneAndUpdate(
-            { userId: interaction.user.id },
-            { language: selectedLang },
-            { upsert: true, new: true }
-        );
-
-        const translations = {
-            ar: {
-                title: '🚀 أهلاً بك في AniTracker!',
-                desc: 'رفيقك المثالي على ديسكورد للبحث عن الأنمي والتنبيهات!\n\n🌐 **اللغة الحالية:** العربية 🇸🇦',
-                footer: 'AniTracker • تم التطوير لعشاق الأنمي'
-            },
-            en: {
-                title: '🚀 Welcome to AniTracker!',
-                desc: 'Your ultimate Discord companion for anime search and notifications!\n\n🌐 **Current Language:** English 🇺🇸',
-                footer: 'AniTracker • Developed for Anime Lovers'
-            },
-            ja: {
-                title: '🚀 AniTrackerへようこそ！',
-                desc: 'アニメ検索や通知のためのDiscordボットです！\n\n🌐 **現在の言語:** 日本語 🇯🇵',
-                footer: 'AniTracker • アニメ愛好者のために開発'
-            },
-            es: {
-                title: '🚀 ¡Bienvenido a AniTracker!',
-                desc: '¡Tu compañero ideal en Discord para buscar anime y notificaciones!\n\n🌐 **Idioma actual:** Español 🇪🇸',
-                footer: 'AniTracker • Desarrollado para amantes del anime'
-            },
-            fr: {
-                title: '🚀 Bienvenue sur AniTracker !',
-                desc: 'Votre compagnon Discord ultime pour la recherche et les notifications d\'anime !\n\n🌐 **Langue actuelle:** Français 🇫🇷',
-                footer: 'AniTracker • Développé pour les passionnés d\'anime'
-            }
-        };
-
-        const t = translations[selectedLang] || translations.en;
-
-        const updatedEmbed = EmbedBuilder.from(interaction.message.embeds[0])
-            .setTitle(t.title)
-            .setDescription(t.desc)
-            .setFooter({ text: t.footer });
-
-        return await interaction.update({ embeds: [updatedEmbed] });
-    }
-}
-
-// ⚪ Handle Interactive Buttons
-if (interaction.isButton()) {
-    // كود الأزرار بتاعك القديم زي ما هو هنا...
-}
     // 🔘 Handle Interactive Buttons
     if (interaction.isButton()) {
         if (interaction.customId.startsWith('track_btn_')) {
@@ -673,60 +610,48 @@ if (interaction.isButton()) {
 
     const { commandName } = interaction;
 
-   // 🚀 Start Command
-if (commandName === 'start') {
-    const embed = new EmbedBuilder()
-        .setTitle('🚀 Welcome to AniTracker!')
-        .setDescription('Your ultimate Discord companion for anime search, recommendations, and automatic episode notifications!\n\n🌐 **Please select your language below / اختر لغتك المفضلة:**')
-        .addFields(
-            { name: '✨ What can AniTracker do?', value: '• Search Anime & Manga details instantly.\n• Track anime in server channels for group alerts.\n• Add anime to personal favorites for **Direct Message (DM)** updates.\n• Find random high-rated anime by category/genre.' },
-            { name: '📚 Quick Start Commands', value: '`/anime` - Search any anime\n`/manga` - Search any manga\n`/genre` - Choose Anime/Manga, then a category\n`/track` - Track anime in a server channel\n`/favorite <title>` - Receive personal DM updates\n`/help` - Show full commands list' },
-            { name: '🐛 Report a Problem or Request Features', value: 'If you encounter any bugs, issues, or have suggestions, please visit the support server for more help.' }
-        )
-        .setColor('#2ecc71')
-        .setThumbnail(client.user.displayAvatarURL())
-        .setFooter({ text: 'AniTracker • Developed for Anime Lovers' });
+    // 🚀 Start Command
+    if (commandName === 'start') {
+        const embed = new EmbedBuilder()
+            .setTitle('🚀 Welcome to AniTracker!')
+            .setDescription('Your ultimate Discord companion for anime search, recommendations, and automatic episode notifications!')
+            .addFields(
+                { name: '✨ What can AniTracker do?', value: '• Search Anime & Manga details instantly.\n• Track anime in server channels for group alerts.\n• Add anime to personal favorites for **Direct Message (DM)** updates.\n• Find random high-rated anime by category/genre.' },
+                { name: '📚 Quick Start Commands', value: '`/anime` - Search any anime\n`/manga` - Search any manga\n`/genre` - Choose Anime/Manga, then a category\n`/track` - Track anime in a server channel\n`/favorite <title>` - Receive personal DM updates\n`/help` - Show full commands list' },
+                { name: '🐛 Report a Problem or Request Features', value: 'If you encounter any bugs, issues, or have suggestions, please visit the support server for more help.' }
+            )
+            .setColor('#2ecc71')
+            .setThumbnail(client.user.displayAvatarURL())
+            .setFooter({ text: 'AniTracker • Developed for Anime Lovers' });
 
-    // قائمة اختيارات اللغات (تتسع لأي عدد لغات)
-    const langSelect = new StringSelectMenuBuilder()
-        .setCustomId(`select_lang_${interaction.user.id}`)
-        .setPlaceholder('🌐 Choose Language / اختر اللغة')
-        .addOptions([
-            { label: 'English', value: 'en', emoji: '🇺🇸' },
-            { label: 'العربية', value: 'ar', emoji: '🇸🇦' },
-            { label: '日本語 (Japanese)', value: 'ja', emoji: '🇯🇵' },
-            { label: 'Español (Spanish)', value: 'es', emoji: '🇪🇸' },
-            { label: 'Français (French)', value: 'fr', emoji: '🇫🇷' },
-        ]);
+        const supportBtn = new ButtonBuilder()
+            .setLabel('💬 Support Server')
+            .setStyle(ButtonStyle.Link)
+            .setURL('https://discord.gg/H4Af2y4RD8');
 
-    const supportBtn = new ButtonBuilder()
-        .setLabel('💬 Support Server')
-        .setStyle(ButtonStyle.Link)
-        .setURL('https://discord.gg/H4Af2y4RD8');
+        const row = new ActionRowBuilder().addComponents(supportBtn);
 
-    const row1 = new ActionRowBuilder().addComponents(langSelect);
-    const row2 = new ActionRowBuilder().addComponents(supportBtn);
+        if (!interaction.guildId) {
+            return interaction.reply({ embeds: [embed], components: [row] });
+        }
 
-    if (!interaction.guildId) {
-        return interaction.reply({ embeds: [embed], components: [row1, row2] });
+        try {
+            await interaction.user.send({ embeds: [embed], components: [row] });
+            await interaction.reply({
+                content: '📥 Check your Direct Messages! I sent you the getting started guide.',
+                ephemeral: true
+            });
+        } catch (error) {
+            await interaction.reply({
+                content: '⚠️ Couldn\'t send you a DM! Please open your Direct Messages in privacy settings.',
+                embeds: [embed],
+                components: [row],
+                ephemeral: true
+            });
+        }
     }
 
-    try {
-        await interaction.user.send({ embeds: [embed], components: [row1, row2] });
-        await interaction.reply({
-            content: '📥 Check your Direct Messages! I sent you the getting started guide.',
-            flags: 64
-        });
-    } catch (error) {
-        await interaction.reply({
-            content: '⚠️ Couldn\'t send you a DM! Please open your Direct Messages in privacy settings.',
-            embeds: [embed],
-            components: [row1, row2],
-            flags: 64
-        });
-    }
-}
-    // 🔞 Owner-controlled age verification (Approve)
+   // 🔞 Owner-controlled age verification (Approve)
     else if (commandName === 'verifyage') {
         if (interaction.user.id !== process.env.DEV_USER_ID) {
             return interaction.reply({ 
@@ -906,74 +831,6 @@ if (commandName === 'start') {
         }
     }
 
-        else if (commandName === 'schedule') {
-    await interaction.deferReply();
-
-    try {
-        // Start and end of the current day in Epoch Timestamps
-        const startOfDay = Math.floor(new Date().setHours(0, 0, 0, 0) / 1000);
-        const endOfDay = Math.floor(new Date().setHours(23, 59, 59, 999) / 1000);
-
-        const query = `
-        query ($start: Int, $end: Int) {
-          Page(perPage: 10) {
-            airingSchedules(airingAt_greater: $start, airingAt_lesser: $end, sort: TIME) {
-              episode
-              airingAt
-              media {
-                title {
-                  english
-                  romaji
-                }
-              }
-            }
-          }
-        }`;
-
-        const response = await fetch('https://graphql.anilist.co', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json',
-            },
-            body: JSON.stringify({
-                query: query,
-                variables: { start: startOfDay, end: endOfDay }
-            })
-        });
-
-        const data = await response.json();
-        const schedules = data?.data?.Page?.airingSchedules || [];
-
-        if (schedules.length === 0) {
-            return interaction.editReply('📅 No new anime episodes scheduled for today!');
-        }
-
-        const embed = new EmbedBuilder()
-            .setColor('#ff69b4')
-            .setTitle('📅 Today\'s Anime Schedule')
-            .setDescription('Here are the anime episodes airing today:')
-            .setTimestamp();
-
-        schedules.forEach(item => {
-            const title = item.media.title.english || item.media.title.romaji;
-            const timeString = `<t:${item.airingAt}:t>`; // Dynamic Discord timestamp adjusting to user local time
-            
-            embed.addFields({
-                name: `🎬 ${title}`,
-                value: `• **Episode:** ${item.episode}\n• **Airing at:** ${timeString}`,
-                inline: false
-            });
-        });
-
-        await interaction.editReply({ embeds: [embed] });
-
-    } catch (err) {
-        console.error('Error fetching schedule:', err);
-        await interaction.editReply('❌ An error occurred while fetching the schedule. Please try again later!');
-    }
-}
-            
     // ⭐ Favorite Command
     else if (commandName === 'favorite') {
         await interaction.deferReply({ ephemeral: true });
@@ -1251,39 +1108,36 @@ else if (commandName === 'eval') {
         });
     }
         else if (commandName === 'broadcast') {
+    // 1. خاص بيك أنت فقط
     if (interaction.user.id !== '1326815636395003966') {
         return interaction.reply({ content: '❌ Dev only command!', flags: 64 });
     }
 
     const message = interaction.options.getString('message');
+
+    // تأجيل الرد عشان البوت ياخد وقته في إرسال الرسائل من غير ما يديك Timeout
     await interaction.deferReply({ flags: 64 });
 
     let successCount = 0;
     let failCount = 0;
 
+    // 2. إرسال الرسالة لكل السيرفرات أولاً
     for (const guild of interaction.client.guilds.cache.values()) {
-        try {
-            // جلب كل القنوات للتأكد إن الـ Cache مليان مش فاضي
-            const channels = await guild.channels.fetch();
-            
-            // البحث عن أفضل قناة متاحة للإرسال فيها
-            const targetChannel = channels.find(
-                c => c && c.isTextBased() && c.permissionsFor(guild.members.me)?.has(['ViewChannel', 'SendMessages'])
-            );
-
-            if (targetChannel) {
-                await targetChannel.send(`📢 **[Announcement]**\n\n${message}`);
+        const channel = guild.systemChannel || guild.channels.cache.find(c => c.isTextBased() && c.permissionsFor(guild.members.me).has('SendMessages'));
+        
+        if (channel) {
+            try {
+                await channel.send(`📢 **[Announcement]**\n\n${message}`);
                 successCount++;
-            } else {
-                console.error(`No permissions/channels found in: ${guild.name}`);
+            } catch (err) {
                 failCount++;
             }
-        } catch (err) {
-            console.error(`Error processing guild ${guild.name}:`, err.message);
+        } else {
             failCount++;
         }
     }
 
+    // 3. إبلاغك بالتفاصيل والنتيجة بعد الانتهاء
     await interaction.editReply({
         content: `✅ **Broadcast Finished!**\n\n• **Sent successfully to:** ${successCount} server(s)\n• **Failed:** ${failCount} server(s)`
     });
