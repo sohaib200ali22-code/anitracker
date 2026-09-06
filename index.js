@@ -732,7 +732,73 @@ client.on('interactionCreate', async interaction => {
             await interaction.reply({ content: '❌ Could not remove age verification. Please try again.', ephemeral: true });
         }
     }
-   
+   else if (commandName === 'schedule') {
+    await interaction.deferReply();
+
+    try {
+        // Start and end of the current day in Epoch Timestamps
+        const startOfDay = Math.floor(new Date().setHours(0, 0, 0, 0) / 1000);
+        const endOfDay = Math.floor(new Date().setHours(23, 59, 59, 999) / 1000);
+
+        const query = `
+        query ($start: Int, $end: Int) {
+          Page(perPage: 10) {
+            airingSchedules(airingAt_greater: $start, airingAt_lesser: $end, sort: TIME) {
+              episode
+              airingAt
+              media {
+                title {
+                  english
+                  romaji
+                }
+              }
+            }
+          }
+        }`;
+
+        const response = await fetch('https://graphql.anilist.co', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+            },
+            body: JSON.stringify({
+                query: query,
+                variables: { start: startOfDay, end: endOfDay }
+            })
+        });
+
+        const data = await response.json();
+        const schedules = data?.data?.Page?.airingSchedules || [];
+
+        if (schedules.length === 0) {
+            return interaction.editReply('📅 No new anime episodes scheduled for today!');
+        }
+
+        const embed = new EmbedBuilder()
+            .setColor('#ff69b4')
+            .setTitle('📅 Today\'s Anime Schedule')
+            .setDescription('Here are the anime episodes airing today:')
+            .setTimestamp();
+
+        schedules.forEach(item => {
+            const title = item.media.title.english || item.media.title.romaji;
+            const timeString = `<t:${item.airingAt}:t>`; // Dynamic Discord timestamp adjusting to user local time
+            
+            embed.addFields({
+                name: `🎬 ${title}`,
+                value: `• **Episode:** ${item.episode}\n• **Airing at:** ${timeString}`,
+                inline: false
+            });
+        });
+
+        await interaction.editReply({ embeds: [embed] });
+
+    } catch (err) {
+        console.error('Error fetching schedule:', err);
+        await interaction.editReply('❌ An error occurred while fetching the schedule. Please try again later!');
+    }
+}
         // 🎭 Character Search Command (Updated to AniList API for 100% stability)
     else if (commandName === 'character') {
         const characterName = interaction.options.getString('name');
