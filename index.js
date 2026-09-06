@@ -427,7 +427,6 @@ await interaction.editReply({ content: '', embeds: [embed], components: [] });
             });
         }
     }
-});
 
 client.on('interactionCreate', async (interaction) => {
     // 1️⃣ Handle Slash Commands
