@@ -391,7 +391,7 @@ client.on('interactionCreate', async (interaction) => {
     tag: genreDefinition.filterType === 'tag' ? genreDefinition.apiValue : null,
     status: genreChoice === 'ongoing' ? 'RELEASING' : 'FINISHED'
 });
-
+const mediaList = data?.Page?.media;
                 if (!mediaList || mediaList.length === 0) {
                     return interaction.editReply({
                         content: `No ${mediaType} found for **${genreDefinition.label}**.`,
