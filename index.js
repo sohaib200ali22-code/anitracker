@@ -121,22 +121,20 @@ function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// AniList API GraphQL Helper Function
+// AniList API GraphQL Helper Function via Cloudflare Worker
 async function fetchAniList(query, variables) {
-    const response = await axios.post('https://proxy.cors.sh/https://graphql.anilist.co', {
+    const response = await axios.post('https://anilistproxy.sohaib200ali22.workers.dev/', {
         query,
         variables
     }, {
         headers: {
             'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            'x-cors-api-key': 'temp_818e3ec54d0df2c5d18d451a37c9fb33'
+            'Accept': 'application/json'
         },
         timeout: 10000
     });
     return response.data.data;
 }
-
 // FIX: AniList's `episodes` field is the total (planned) episode count, not
 // "how many episodes have aired so far". For currently-airing anime this
 // barely ever changes, so the old code (comparing raw `episodes`) almost
