@@ -418,10 +418,9 @@ client.on('interactionCreate', async interaction => {
                     if (interaction.guildId) buttons.unshift(trackBtn);
                     components.push(new ActionRowBuilder().addComponents(...buttons));
                 }
-
-                await interaction.editReply({ content: '', embeds: [embed], components });
-            } catch (err) {
-               console.error('genre recommendation error:', err);
+await interaction.editReply({ content: '', embeds: [embed], components: [] });
+        } catch (err) {
+            console.error('genre recommendation error:', err);
             await interaction.editReply({
                 content: '❌ Failed to fetch this recommendation. Please try `/genre` again.',
                 components: []
@@ -433,8 +432,6 @@ client.on('interactionCreate', async interaction => {
 client.on('interactionCreate', async (interaction) => {
     // 1️⃣ Handle Slash Commands
     if (interaction.isChatInputCommand()) {
-        const command = client.commands.get(interaction.commandName);
-        if (!command) return;
         const command = client.commands.get(interaction.commandName);
         if (!command) return;
 
@@ -450,8 +447,8 @@ client.on('interactionCreate', async (interaction) => {
             }
         }
         return;
-    }
-
+}
+    
     // 2️⃣ Handle Language Selection Menu
     if (interaction.isStringSelectMenu()) {
         if (interaction.customId.startsWith('select_lang_')) {
