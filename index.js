@@ -227,6 +227,9 @@ const commands = [
                 .setDescription('Anime title to track')
                 .setRequired(true)),
     new SlashCommandBuilder()
+    .setName('schedule')
+    .setDescription('📅 Displays today\'s anime release schedule!'),
+    new SlashCommandBuilder()
         .setName('untrack')
         .setDescription('Stop tracking an anime in this channel')
         .addStringOption(option =>
