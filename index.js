@@ -431,7 +431,7 @@ client.on('interactionCreate', async interaction => {
         return;
     }
     
-// 🌐 Handle Select Menus (Dropdowns)
+// 🌐 Handle Language Selection Menu
 if (interaction.isStringSelectMenu()) {
     if (interaction.customId.startsWith('select_lang_')) {
         const targetUserId = interaction.customId.split('_')[2];
@@ -440,14 +440,19 @@ if (interaction.isStringSelectMenu()) {
             return interaction.reply({ content: '❌ You cannot use this menu!', flags: 64 });
         }
 
+        // إعلام ديسكورد فوراً إن البوت بيعالج التفاعل لتجنب الـ Timeout
+        await interaction.deferUpdate();
+
         const selectedLang = interaction.values[0];
 
+        // حفظ أو تحديث اللغة المختارة في MongoDB
         await User.findOneAndUpdate(
             { userId: interaction.user.id },
             { language: selectedLang },
             { upsert: true, new: true }
         );
 
+        // قاموس الترجمات
         const translations = {
             ar: {
                 title: '🚀 أهلاً بك في AniTracker!',
@@ -483,10 +488,10 @@ if (interaction.isStringSelectMenu()) {
             .setDescription(t.desc)
             .setFooter({ text: t.footer });
 
-        return await interaction.update({ embeds: [updatedEmbed] });
+        return await interaction.editReply({ embeds: [updatedEmbed] });
     }
 }
-
+    
 // ⚪ Handle Interactive Buttons
 if (interaction.isButton()) {
     // كود الأزرار بتاعك القديم زي ما هو هنا...
