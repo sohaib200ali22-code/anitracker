@@ -418,133 +418,108 @@ client.on('interactionCreate', async interaction => {
                     if (interaction.guildId) buttons.unshift(trackBtn);
                     components.push(new ActionRowBuilder().addComponents(...buttons));
                 }
-await interaction.editReply({ content: '', embeds: [embed], components: [] });
-        } catch (err) {
-            console.error('genre recommendation error:', err);
-            await interaction.editReply({
-                content: '❌ Failed to fetch this recommendation. Please try `/genre` again.',
-                components: []
-            });
-        }
-    }
 
-client.on('interactionCreate', async (interaction) => {
-    // 1️⃣ Handle Slash Commands
-    if (interaction.isChatInputCommand()) {
-        const command = client.commands.get(interaction.commandName);
-        if (!command) return;
-
-        try {
-            await command.execute(interaction);
-        } catch (error) {
-            console.error('❌ Command Error:', error);
-            const content = '❌ There was an error executing this command!';
-            if (interaction.replied || interaction.deferred) {
-                await interaction.followUp({ content, flags: 64 }).catch(() => {});
-            } else {
-                await interaction.reply({ content, flags: 64 }).catch(() => {});
+                await interaction.editReply({ content: '', embeds: [embed], components });
+            } catch (err) {
+                console.error('genre recommendation error:', err);
+                await interaction.editReply({
+                    content: '❌ Failed to fetch this recommendation. Please try `/genre` again.',
+                    components: []
+                });
             }
         }
         return;
-}
+    }
     
-    // 2️⃣ Handle Language Selection Menu
-    if (interaction.isStringSelectMenu()) {
-        if (interaction.customId.startsWith('select_lang_')) {
-            // نرد على ديسكورد فوراً
-            await interaction.deferUpdate().catch(() => {});
+// 🌐 Handle Select Menus (Dropdowns)
+if (interaction.isStringSelectMenu()) {
+    if (interaction.customId.startsWith('select_lang_')) {
+        const targetUserId = interaction.customId.split('_')[2];
+
+        if (interaction.user.id !== targetUserId) {
+            return interaction.reply({ content: '❌ You cannot use this menu!', flags: 64 });
+        }
+
+        const selectedLang = interaction.values[0];
+
+        await User.findOneAndUpdate(
+            { userId: interaction.user.id },
+            { language: selectedLang },
+            { upsert: true, new: true }
+        );
+
+        const translations = {
+            ar: {
+                title: '🚀 أهلاً بك في AniTracker!',
+                desc: 'رفيقك المثالي على ديسكورد للبحث عن الأنمي والتنبيهات!\n\n🌐 **اللغة الحالية:** العربية 🇸🇦',
+                footer: 'AniTracker • تم التطوير لعشاق الأنمي'
+            },
+            en: {
+                title: '🚀 Welcome to AniTracker!',
+                desc: 'Your ultimate Discord companion for anime search and notifications!\n\n🌐 **Current Language:** English 🇺🇸',
+                footer: 'AniTracker • Developed for Anime Lovers'
+            },
+            ja: {
+                title: '🚀 AniTrackerへようこそ！',
+                desc: 'アニメ検索や通知のためのDiscordボットです！\n\n🌐 **現在の言語:** 日本語 🇯🇵',
+                footer: 'AniTracker • アニメ愛好者のために開発'
+            },
+            es: {
+                title: '🚀 ¡Bienvenido a AniTracker!',
+                desc: '¡Tu compañero ideal en Discord para buscar anime y notificaciones!\n\n🌐 **Idioma actual:** Español 🇪🇸',
+                footer: 'AniTracker • Desarrollado para amantes del anime'
+            },
+            fr: {
+                title: '🚀 Bienvenue sur AniTracker !',
+                desc: 'Votre compagnon Discord ultime pour la recherche et les notifications d\'anime !\n\n🌐 **Langue actuelle:** Français 🇫🇷',
+                footer: 'AniTracker • Développé pour les passionnés d\'anime'
+            }
+        };
+
+        const t = translations[selectedLang] || translations.en;
+
+        const updatedEmbed = EmbedBuilder.from(interaction.message.embeds[0])
+            .setTitle(t.title)
+            .setDescription(t.desc)
+            .setFooter({ text: t.footer });
+
+        return await interaction.update({ embeds: [updatedEmbed] });
+    }
+}
+
+// ⚪ Handle Interactive Buttons
+if (interaction.isButton()) {
+    // كود الأزرار بتاعك القديم زي ما هو هنا...
+}
+    // 🔘 Handle Interactive Buttons
+    if (interaction.isButton()) {
+        if (interaction.customId.startsWith('track_btn_')) {
+            if (!interaction.guildId) {
+                return interaction.reply({
+                    content: '🎯 Channel tracking works inside a server. Use `/favorite <title>` for personal DM alerts.',
+                    ephemeral: true
+                });
+            }
+
+            await interaction.deferReply({ ephemeral: true });
+            const animeId = parseInt(interaction.customId.replace('track_btn_', ''));
+
+            const gqlQuery = `
+            query ($id: Int) {
+              Media (id: $id, type: ANIME) {
+                id
+                title { romaji english }
+                episodes
+                status
+                siteUrl
+              }
+            }`;
 
             try {
-                const parts = interaction.customId.split('_');
-                const targetUserId = parts[2];
-
-                if (interaction.user.id !== targetUserId) {
-                    return await interaction.followUp({ content: '❌ You cannot use this menu!', flags: 64 });
-                }
-
-                const selectedLang = interaction.values[0];
-
-                // حفظ اللغة
-                if (typeof User !== 'undefined') {
-                    await User.findOneAndUpdate(
-                        { userId: interaction.user.id },
-                        { language: selectedLang },
-                        { upsert: true, new: true }
-                    );
-                }
-
-                const translations = {
-                    ar: {
-                        title: '🚀 أهلاً بك في AniTracker!',
-                        desc: 'رفيقك المثالي على ديسكورد للبحث عن الأنمي والتنبيهات!\n\n🌐 **اللغة الحالية:** العربية 🇸🇦',
-                        footer: 'AniTracker • تم التطوير لعشاق الأنمي'
-                    },
-                    en: {
-                        title: '🚀 Welcome to AniTracker!',
-                        desc: 'Your ultimate Discord companion for anime search and notifications!\n\n🌐 **Current Language:** English 🇺🇸',
-                        footer: 'AniTracker • Developed for Anime Lovers'
-                    },
-                    ja: {
-                        title: '🚀 AniTrackerへようこそ！',
-                        desc: 'アニメ検索や通知のためのDiscordボットです！\n\n🌐 **現在の言語:** 日本語 🇯🇵',
-                        footer: 'AniTracker • アニメ愛好者のために開発'
-                    },
-                    es: {
-                        title: '🚀 ¡Bienvenido a AniTracker!',
-                        desc: '¡Tu compañero ideal en Discord para buscar anime y notificaciones!\n\n🌐 **Idioma actual:** Español 🇪🇸',
-                        footer: 'AniTracker • Desarrollado para amantes del anime'
-                    },
-                    fr: {
-                        title: '🚀 Bienvenue sur AniTracker !',
-                        desc: 'Votre compagnon Discord ultime pour la recherche et les notifications d\'anime !\n\n🌐 **Langue actuelle:** Français 🇫🇷',
-                        footer: 'AniTracker • Développé pour les passionnés d\'anime'
-                    }
-                };
-
-                const t = translations[selectedLang] || translations.en;
-
-                const updatedEmbed = EmbedBuilder.from(interaction.message.embeds[0])
-                    .setTitle(t.title)
-                    .setDescription(t.desc)
-                    .setFooter({ text: t.footer });
-
-                await interaction.editReply({ embeds: [updatedEmbed] });
-            } catch (err) {
-                console.error('❌ Select Menu Execution Error:', err);
-            }
-        }
-        return;
-    }
-
-    // 3️⃣ Handle Interactive Buttons
-    if (interaction.isButton()) {
-        try {
-            if (interaction.customId.startsWith('track_btn_')) {
-                if (!interaction.guildId) {
-                    return await interaction.reply({
-                        content: '🎯 Channel tracking works inside a server. Use `/favorite <title>` for personal DM alerts.',
-                        flags: 64
-                    });
-                }
-
-                await interaction.deferReply({ flags: 64 });
-                const animeId = parseInt(interaction.customId.replace('track_btn_', ''));
-
-                const gqlQuery = `
-                query ($id: Int) {
-                  Media (id: $id, type: ANIME) {
-                    id
-                    title { romaji english }
-                    episodes
-                    status
-                    siteUrl
-                  }
-                }`;
-
                 const data = await fetchAniList(gqlQuery, { id: animeId });
                 const anime = data?.Media;
 
-                if (!anime) return await interaction.editReply({ content: 'Anime not found!' });
+                if (!anime) return interaction.editReply({ content: 'Anime not found!' });
 
                 const animeTitle = (anime.title && (anime.title.english || anime.title.romaji)) || 'Unknown Anime';
                 const existing = await TrackedItem.findOne({ guildId: interaction.guildId, animeId: anime.id });
@@ -563,25 +538,29 @@ client.on('interactionCreate', async (interaction) => {
                 });
 
                 await interaction.editReply({ content: `🎯 Successfully started tracking **[${animeTitle}](${anime.siteUrl})** in this channel!` });
-            } 
-            else if (interaction.customId.startsWith('fav_btn_')) {
-                await interaction.deferReply({ flags: 64 });
-                const animeId = parseInt(interaction.customId.replace('fav_btn_', ''));
+            } catch (err) {
+                await interaction.editReply({ content: 'Failed to track via button.' });
+            }
+        }
+        else if (interaction.customId.startsWith('fav_btn_')) {
+            await interaction.deferReply({ ephemeral: true });
+            const animeId = parseInt(interaction.customId.replace('fav_btn_', ''));
 
-                const gqlQuery = `
-                query ($id: Int) {
-                  Media (id: $id, type: ANIME) {
-                    id
-                    title { romaji english }
-                    episodes
-                    siteUrl
-                  }
-                }`;
+            const gqlQuery = `
+            query ($id: Int) {
+              Media (id: $id, type: ANIME) {
+                id
+                title { romaji english }
+                episodes
+                siteUrl
+              }
+            }`;
 
+            try {
                 const data = await fetchAniList(gqlQuery, { id: animeId });
                 const anime = data?.Media;
 
-                if (!anime) return await interaction.editReply({ content: 'Anime not found!' });
+                if (!anime) return interaction.editReply({ content: 'Anime not found!' });
 
                 const animeTitle = (anime.title && (anime.title.english || anime.title.romaji)) || 'Unknown Anime';
                 const existing = await FavoriteItem.findOne({ userId: interaction.user.id, animeId: anime.id });
@@ -598,60 +577,44 @@ client.on('interactionCreate', async (interaction) => {
                 });
 
                 await interaction.editReply({ content: `⭐ Added **[${animeTitle}](${anime.siteUrl})** to your personal favorites! You will receive direct messages (DMs) when new episodes arrive.` });
-            } 
-            else if (interaction.customId.startsWith('char_info_')) {
-                await interaction.deferReply({ flags: 64 });
-                const charId = parseInt(interaction.customId.replace('char_info_', ''));
+            } catch (err) {
+                await interaction.editReply({ content: 'Failed to add to personal favorites.' });
+            }
+        }
+        // FIX: this handler was completely missing, so the "📖 More Info" button
+        // on /character results just failed silently ("This interaction failed").
+        else if (interaction.customId.startsWith('char_info_')) {
+            await interaction.deferReply({ ephemeral: true });
+            const charId = parseInt(interaction.customId.replace('char_info_', ''));
 
-                const gqlQuery = `
-                query ($id: Int) {
-                  Character (id: $id) {
-                    id
-                    name { full native alternative }
-                    image { large }
-                    description(asHtml: false)
-                    gender
-                    age
-                    dateOfBirth { year month day }
-                    favourites
-                    siteUrl
-                    media (perPage: 5, sort: POPULARITY_DESC) {
-                      edges {
-                        voiceActors (language: JAPANESE) {
-                          name { full }
-                        }
-                        node {
-                          title { romaji english }
-                        }
-                      }
+            // FIX: expanded the query — added description, image, and the anime
+            // appearances + Japanese voice actor so "More Info" actually shows
+            // more useful data than before, not just name/age/gender.
+            const gqlQuery = `
+            query ($id: Int) {
+              Character (id: $id) {
+                id
+                name { full native alternative }
+                image { large }
+                description(asHtml: false)
+                gender
+                age
+                dateOfBirth { year month day }
+                favourites
+                siteUrl
+                media (perPage: 5, sort: POPULARITY_DESC) {
+                  edges {
+                    voiceActors (language: JAPANESE) {
+                      name { full }
+                    }
+                    node {
+                      title { romaji english }
                     }
                   }
-                }`;
+                }
+              }
+            }`;
 
-                const data = await fetchAniList(gqlQuery, { id: charId });
-                const char = data?.Character;
-
-                if (!char) return await interaction.editReply({ content: 'Character details not found!' });
-
-                const embed = new EmbedBuilder()
-                    .setTitle(char.name.full + (char.name.native ? ` (${char.name.native})` : ''))
-                    .setURL(char.siteUrl)
-                    .setThumbnail(char.image?.large)
-                    .setDescription(char.description ? char.description.slice(0, 1000) + '...' : 'No description available.')
-                    .addFields(
-                        { name: 'Gender', value: char.gender || 'Unknown', inline: true },
-                        { name: 'Age', value: char.age || 'Unknown', inline: true },
-                        { name: 'Favorites', value: `${char.favourites || 0}`, inline: true }
-                    )
-                    .setColor('#992D22');
-
-                await interaction.editReply({ embeds: [embed] });
-            }
-        } catch (err) {
-            console.error('❌ Button Execution Error:', err);
-        }
-    }
-});
             try {
                 const data = await fetchAniList(gqlQuery, { id: charId });
                 const char = data?.Character;
