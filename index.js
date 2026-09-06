@@ -129,7 +129,8 @@ async function fetchAniList(query, variables) {
     }, {
         headers: {
             'Content-Type': 'application/json',
-            'Accept': 'application/json'
+            'Accept': 'application/json',
+            'User-Agent': 'AniTrackerBot/1.0'
         },
         timeout: 10000
     });
