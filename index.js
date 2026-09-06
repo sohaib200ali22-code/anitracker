@@ -364,7 +364,25 @@ client.on('interactionCreate', async interaction => {
                 }
               }
             }`;
+            
+client.on('interactionCreate', async (interaction) => {
+    // لو بتفحص زرار معين مثلاً:
+    if (interaction.isButton() && interaction.customId === 'adult_category_btn') {
+        
+        // حط الكود هنا 👇
+        let userDoc = await User.findOne({ userId: interaction.user.id });
+        const isVerified = userDoc ? userDoc.isVerified : false;
 
+        if (!isVerified) {
+            return interaction.update({
+                content: `🔞 **This category is restricted to verified adults.**\n\n👤 **Owner:** \`_h8rtless_\`\n💬 Join our support server to open a ticket and verify your age:\nhttps://discord.gg/H4Af2y4RD8`,
+                components: []
+            });
+        }
+
+        // باقي كود العرض للناس الموثقة هنا...
+    }
+});
             try {
                 const data = await fetchAniList(gqlQuery, {
                     type: mediaType === 'manga' ? 'MANGA' : 'ANIME',
