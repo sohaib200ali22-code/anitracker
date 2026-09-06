@@ -434,64 +434,71 @@ client.on('interactionCreate', async interaction => {
 // 🌐 Handle Language Selection Menu
 if (interaction.isStringSelectMenu()) {
     if (interaction.customId.startsWith('select_lang_')) {
-        const targetUserId = interaction.customId.split('_')[2];
+        // 1. نرد على ديسكورد فوراً في أول أجزاء من الثانية
+        await interaction.deferUpdate().catch(() => {});
 
-        if (interaction.user.id !== targetUserId) {
-            return interaction.reply({ content: '❌ You cannot use this menu!', flags: 64 });
-        }
+        try {
+            const targetUserId = interaction.customId.split('_')[2];
 
-        // إعلام ديسكورد فوراً إن البوت بيعالج التفاعل لتجنب الـ Timeout
-        await interaction.deferUpdate();
-
-        const selectedLang = interaction.values[0];
-
-        // حفظ أو تحديث اللغة المختارة في MongoDB
-        await User.findOneAndUpdate(
-            { userId: interaction.user.id },
-            { language: selectedLang },
-            { upsert: true, new: true }
-        );
-
-        // قاموس الترجمات
-        const translations = {
-            ar: {
-                title: '🚀 أهلاً بك في AniTracker!',
-                desc: 'رفيقك المثالي على ديسكورد للبحث عن الأنمي والتنبيهات!\n\n🌐 **اللغة الحالية:** العربية 🇸🇦',
-                footer: 'AniTracker • تم التطوير لعشاق الأنمي'
-            },
-            en: {
-                title: '🚀 Welcome to AniTracker!',
-                desc: 'Your ultimate Discord companion for anime search and notifications!\n\n🌐 **Current Language:** English 🇺🇸',
-                footer: 'AniTracker • Developed for Anime Lovers'
-            },
-            ja: {
-                title: '🚀 AniTrackerへようこそ！',
-                desc: 'アニメ検索や通知のためのDiscordボットです！\n\n🌐 **現在の言語:** 日本語 🇯🇵',
-                footer: 'AniTracker • アニメ愛好者のために開発'
-            },
-            es: {
-                title: '🚀 ¡Bienvenido a AniTracker!',
-                desc: '¡Tu compañero ideal en Discord para buscar anime y notificaciones!\n\n🌐 **Idioma actual:** Español 🇪🇸',
-                footer: 'AniTracker • Desarrollado para amantes del anime'
-            },
-            fr: {
-                title: '🚀 Bienvenue sur AniTracker !',
-                desc: 'Votre compagnon Discord ultime pour la recherche et les notifications d\'anime !\n\n🌐 **Langue actuelle:** Français 🇫🇷',
-                footer: 'AniTracker • Développé pour les passionnés d\'anime'
+            if (interaction.user.id !== targetUserId) {
+                return interaction.followUp({ content: '❌ You cannot use this menu!', flags: 64 });
             }
-        };
 
-        const t = translations[selectedLang] || translations.en;
+            const selectedLang = interaction.values[0];
 
-        const updatedEmbed = EmbedBuilder.from(interaction.message.embeds[0])
-            .setTitle(t.title)
-            .setDescription(t.desc)
-            .setFooter({ text: t.footer });
+            // 2. تحديث قاعدة البيانات
+            if (typeof User !== 'undefined') {
+                await User.findOneAndUpdate(
+                    { userId: interaction.user.id },
+                    { language: selectedLang },
+                    { upsert: true, new: true }
+                );
+            } else {
+                console.log('⚠️ Warning: User model is not defined!');
+            }
 
-        return await interaction.editReply({ embeds: [updatedEmbed] });
+            // 3. الترجمات
+            const translations = {
+                ar: {
+                    title: '🚀 أهلاً بك في AniTracker!',
+                    desc: 'رفيقك المثالي على ديسكورد للبحث عن الأنمي والتنبيهات!\n\n🌐 **اللغة الحالية:** العربية 🇸🇦',
+                    footer: 'AniTracker • تم التطوير لعشاق الأنمي'
+                },
+                en: {
+                    title: '🚀 Welcome to AniTracker!',
+                    desc: 'Your ultimate Discord companion for anime search and notifications!\n\n🌐 **Current Language:** English 🇺🇸',
+                    footer: 'AniTracker • Developed for Anime Lovers'
+                },
+                ja: {
+                    title: '🚀 AniTrackerへようこそ！',
+                    desc: 'アニメ検索や通知のためのDiscordボットです！\n\n🌐 **現在の言語:** 日本語 🇯🇵',
+                    footer: 'AniTracker • アニメ愛好者のために開発'
+                },
+                es: {
+                    title: '🚀 ¡Bienvenido a AniTracker!',
+                    desc: '¡Tu compañero ideal en Discord para buscar anime y notificaciones!\n\n🌐 **Idioma actual:** Español 🇪🇸',
+                    footer: 'AniTracker • Desarrollado para amantes del anime'
+                },
+                fr: {
+                    title: '🚀 Bienvenue sur AniTracker !',
+                    desc: 'Votre compagnon Discord ultime pour la recherche et les notifications d\'anime !\n\n🌐 **Langue actuelle:** Français 🇫🇷',
+                    footer: 'AniTracker • Développé pour les passionnés d\'anime'
+                }
+            };
+
+            const t = translations[selectedLang] || translations.en;
+
+            const updatedEmbed = EmbedBuilder.from(interaction.message.embeds[0])
+                .setTitle(t.title)
+                .setDescription(t.desc)
+                .setFooter({ text: t.footer });
+
+            await interaction.editReply({ embeds: [updatedEmbed] });
+        } catch (err) {
+            console.error('❌ Language Select Error:', err);
+        }
     }
-}
-    
+}    
 // ⚪ Handle Interactive Buttons
 if (interaction.isButton()) {
     // كود الأزرار بتاعك القديم زي ما هو هنا...
