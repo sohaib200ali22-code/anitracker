@@ -197,7 +197,7 @@ const commands = [
                 .setRequired(true)),
     new SlashCommandBuilder()
     .setName('schedule')
-    .setDescription('📅 Displays today\'s anime release schedule!')
+    .setDescription('📅 Displays today\'s anime release schedule!'),
     new SlashCommandBuilder()
     .setName('genre')
     .setDescription('Choose Anime or Manga, then get a recommendation by category')
