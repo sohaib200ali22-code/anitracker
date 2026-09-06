@@ -123,7 +123,7 @@ function sleep(ms) {
 
 // AniList API GraphQL Helper Function
 async function fetchAniList(query, variables) {
-    const response = await axios.post('https://graphql.anilist.co', {
+    const response = await axios.post('https://corsproxy.io/?https://graphql.anilist.co', {
         query,
         variables
     }, {
