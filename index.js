@@ -123,14 +123,14 @@ function sleep(ms) {
 
 // AniList API GraphQL Helper Function
 async function fetchAniList(query, variables) {
-    const response = await axios.post('https://corsproxy.io/?https://graphql.anilist.co', {
+    const response = await axios.post('https://proxy.cors.sh/https://graphql.anilist.co', {
         query,
         variables
     }, {
         headers: {
             'Content-Type': 'application/json',
             'Accept': 'application/json',
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+            'x-cors-api-key': 'temp_818e3ec54d0df2c5d18d451a37c9fb33'
         },
         timeout: 10000
     });
