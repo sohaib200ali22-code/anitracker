@@ -421,19 +421,20 @@ client.on('interactionCreate', async interaction => {
 
                 await interaction.editReply({ content: '', embeds: [embed], components });
             } catch (err) {
-                console.error('genre recommendation error:', err);
-                await interaction.editReply({
-                    content: '❌ Failed to fetch this recommendation. Please try `/genre` again.',
-                    components: []
-                });
-            }
+               console.error('genre recommendation error:', err);
+            await interaction.editReply({
+                content: '❌ Failed to fetch this recommendation. Please try `/genre` again.',
+                components: []
+            });
         }
-        return;
     }
-    
+});
+
 client.on('interactionCreate', async (interaction) => {
     // 1️⃣ Handle Slash Commands
     if (interaction.isChatInputCommand()) {
+        const command = client.commands.get(interaction.commandName);
+        if (!command) return;
         const command = client.commands.get(interaction.commandName);
         if (!command) return;
 
