@@ -349,9 +349,9 @@ client.on('interactionCreate', async interaction => {
             await interaction.deferUpdate();
 
             const gqlQuery = `
-            query ($type: MediaType, $genre: String, $tag: String) {
-              Page (page: 1, perPage: 10) {
-                media (type: $type, genre: $genre, tag: $tag, sort: SCORE_DESC) {
+            query ($type: MediaType, $genre: String, $tag: String, $status: MediaStatus) {
+  Page (page: 1, perPage: 10) {
+    media (type: $type, genre: $genre, tag: $tag, status: $status, sort: SCORE_DESC) {
                   id
                   title { romaji english }
                   episodes
@@ -383,13 +383,14 @@ client.on('interactionCreate', async (interaction) => {
         // باقي كود العرض للناس الموثقة هنا...
     }
 });
+   
             try {
                 const data = await fetchAniList(gqlQuery, {
-                    type: mediaType === 'manga' ? 'MANGA' : 'ANIME',
-                    genre: genreDefinition.filterType === 'genre' ? genreDefinition.apiValue : null,
-                    tag: genreDefinition.filterType === 'tag' ? genreDefinition.apiValue : null
-                });
-                const mediaList = data?.Page?.media;
+    type: mediaType === 'manga' ? 'MANGA' : 'ANIME',
+    genre: genreDefinition.filterType === 'genre' ? genreDefinition.apiValue : null,
+    tag: genreDefinition.filterType === 'tag' ? genreDefinition.apiValue : null,
+    status: genreChoice === 'ongoing' ? 'RELEASING' : 'FINISHED'
+});
 
                 if (!mediaList || mediaList.length === 0) {
                     return interaction.editReply({
@@ -433,7 +434,9 @@ client.on('interactionCreate', async (interaction) => {
                         .setStyle(ButtonStyle.Primary);
 
                     const buttons = [favBtn];
-                    if (interaction.guildId) buttons.unshift(trackBtn);
+                    if (interaction.guildId && anime.status !== 'FINISHED') {
+  buttons.unshift(trackBtn);
+}
                     components.push(new ActionRowBuilder().addComponents(...buttons));
                 }
 
