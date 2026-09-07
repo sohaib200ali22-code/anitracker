@@ -1092,9 +1092,9 @@ const mediaList = data?.Page?.media;
             let data = await fetchAniList(gqlQuery, { search: searchQuery });
             let anime = data?.Media;
 
-            // 🆘 Fallback Logic (إذا AniList واقف أو رجّع null)
+            // 🆘 Fallback Logic (إذا AniList رجّع null من غير Error)
             if (!anime) {
-                console.log('AniList unavailable or failed. Switching to Jikan Fallback...');
+                console.log('AniList returned null. Switching to Jikan Fallback...');
                 const jikanData = await getAnimeJikan(searchQuery);
 
                 if (!jikanData) {
@@ -1176,8 +1176,33 @@ const mediaList = data?.Page?.media;
                 components: components 
             });
         } catch (err) {
-            console.error('Anime Command Error:', err);
-            await interaction.editReply('Failed to fetch anime data.');
+            console.error('AniList Error, attempting Jikan fallback:', err.message);
+            
+            // 🆘 Fallback directly from catch block if AniList throws an exception (403/500)
+            try {
+                const jikanData = await getAnimeJikan(searchQuery);
+
+                if (jikanData) {
+                    const fallbackEmbed = new EmbedBuilder()
+                        .setTitle(jikanData.title)
+                        .setURL(jikanData.url || 'https://myanimelist.net')
+                        .setThumbnail(jikanData.image || 'https://i.imgur.com/AGv4yDI.png')
+                        .addFields(
+                            { name: 'Episodes', value: `${jikanData.episodes ?? 'N/A'}`, inline: true },
+                            { name: 'Status', value: jikanData.status || 'N/A', inline: true },
+                            { name: 'Score', value: jikanData.score ? `${jikanData.score} / 10` : 'N/A', inline: true }
+                        )
+                        .setDescription(jikanData.synopsis)
+                        .setFooter({ text: '⚠️ Source: MyAnimeList (AniList Emergency Backup)' })
+                        .setColor('#FF5733');
+
+                    return await interaction.editReply({ embeds: [fallbackEmbed], components: [] });
+                }
+            } catch (fallbackErr) {
+                console.error('Jikan Fallback Error:', fallbackErr);
+            }
+
+            await interaction.editReply('❌ Failed to fetch anime data from AniList and MyAnimeList.');
         }
     }
 else if (commandName === 'eval') {
