@@ -1315,30 +1315,78 @@ else if (commandName === 'eval') {
           }
         }`;
 
+        let manga = null;
+
+        // 1. Try AniList First
         try {
             const data = await fetchAniList(gqlQuery, { search: searchQuery });
-            const manga = data?.Media;
+            manga = data?.Media;
+        } catch (err) {
+            console.error('AniList Manga Fetch Error:', err.message);
+        }
 
-            if (!manga) return interaction.editReply('Manga not found!');
+        // 2. Fallback if AniList failed or returned no data
+        if (!manga) {
+            console.log('AniList failed or returned no data for Manga. Fetching from Fallback...');
+            try {
+                const jikanData = await getAnimeJikan(searchQuery);
+
+                if (jikanData) {
+                    const fallbackEmbed = new EmbedBuilder()
+                        .setTitle(jikanData.title)
+                        .setURL(jikanData.url || 'https://kitsu.io')
+                        .setThumbnail(jikanData.image || 'https://i.imgur.com/AGv4yDI.png')
+                        .addFields(
+                            { name: 'Chapters', value: `${jikanData.chapters ?? jikanData.episodes ?? 'N/A'}`, inline: true },
+                            { name: 'Status', value: jikanData.status || 'N/A', inline: true },
+                            { name: 'Score', value: jikanData.score || 'N/A', inline: true }
+                        )
+                        .setDescription(jikanData.synopsis)
+                        .setColor('#33FF57');
+
+                    // 1. إرسال الـ Embed العادي للجميع في الشات
+                    await interaction.editReply({ embeds: [fallbackEmbed], components: [] });
+
+                    // 2. إرسال إشعار مخفي للـ Dev فقط (صهيب)
+                    const DEV_ID = '1326815636395003966';
+
+                    if (interaction.user.id === DEV_ID) {
+                        await interaction.followUp({
+                            content: '🚨 **[Dev Alert]:** AniList was unreachable. This manga response was fetched via the Emergency Backup (Kitsu)!',
+                            ephemeral: true
+                        });
+                    }
+
+                    return; // إنهاء الدالة بنجاح
+                }
+            } catch (fallbackErr) {
+                console.error('Manga Fallback Error:', fallbackErr);
+            }
+
+            return await interaction.editReply('❌ Manga not found on AniList or Emergency Backup.');
+        }
+
+        // 3. Render AniList Data (If AniList succeeded)
+        try {
             // فحص ما إذا كانت المانجا 18+
-if (manga.isAdult) {
-    let isVerified = false;
-    try {
-        isVerified = Boolean(await AgeVerification.exists({ userId: interaction.user.id }));
-    } catch (err) {
-        console.error('age verification lookup error:', err);
-    }
+            if (manga.isAdult) {
+                let isVerified = false;
+                try {
+                    isVerified = Boolean(await AgeVerification.exists({ userId: interaction.user.id }));
+                } catch (err) {
+                    console.error('age verification lookup error:', err);
+                }
 
-    if (!isVerified) {
-        return interaction.editReply({
-            content: `🔞 **This manga is restricted to verified adults.**\n\n` +
-                     `👤 **Owner:** \`_h8rtless_\`\n` +
-                     `💬 Join our support server to open a ticket and verify your age:\n` +
-                     `https://discord.gg/H4Af2y4RD8`,
-            embeds: []
-        });
-    }
-}
+                if (!isVerified) {
+                    return interaction.editReply({
+                        content: `🔞 **This manga is restricted to verified adults.**\n\n` +
+                                 `👤 **Owner:** \`_h8rtless_\`\n` +
+                                 `💬 Join our support server to open a ticket and verify your age:\n` +
+                                 `https://discord.gg/H4Af2y4RD8`,
+                        embeds: []
+                    });
+                }
+            }
 
             const title = (manga.title && (manga.title.english || manga.title.romaji)) || searchQuery;
             const cleanDesc = manga.description ? manga.description.replace(/<[^>]*>?/gm, '').substring(0, 300) + '...' : 'No synopsis available.';
@@ -1357,7 +1405,8 @@ if (manga.isAdult) {
 
             await interaction.editReply({ embeds: [embed] });
         } catch (err) {
-            await interaction.editReply('Failed to fetch manga data.');
+            console.error('Manga Command Render Error:', err);
+            await interaction.editReply('Failed to display manga data.');
         }
     }
 
