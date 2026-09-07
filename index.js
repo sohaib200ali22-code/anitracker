@@ -312,161 +312,189 @@ client.once('ready', async () => {
 
 client.on('interactionCreate', async interaction => {
     // 🎲 Genre recommendation menus
-    if (interaction.isStringSelectMenu()) {
-        if (interaction.customId === 'genre_media_select') {
-            const mediaType = interaction.values[0];
+if (interaction.isStringSelectMenu()) {
+    if (interaction.customId === 'genre_media_select') {
+        const mediaType = interaction.values[0];
+        return interaction.update({
+            content: `📚 You chose **${mediaType === 'anime' ? 'Anime' : 'Manga'}**. Now choose a category:`,
+            components: [buildGenreMenu(mediaType)]
+        });
+    }
+
+    if (interaction.customId.startsWith('genre_select_')) {
+        const mediaType = interaction.customId.replace('genre_select_', '');
+        const genreChoice = interaction.values[0];
+        const genreDefinition = getGenreDefinition(genreChoice);
+
+        if (!genreDefinition) {
             return interaction.update({
-                content: `📚 You chose **${mediaType === 'anime' ? 'Anime' : 'Manga'}**. Now choose a category:`,
-                components: [buildGenreMenu(mediaType)]
-            });
-        }
-
-        if (interaction.customId.startsWith('genre_select_')) {
-            const mediaType = interaction.customId.replace('genre_select_', '');
-            const genreChoice = interaction.values[0];
-            const genreDefinition = getGenreDefinition(genreChoice);
-
-            if (!genreDefinition) {
-                return interaction.update({
-                    content: '❌ That category is no longer available. Please run `/genre` again.',
-                    components: []
-                });
-            }
-
-            if (genreDefinition.adultOnly) {
-                let isVerified = false;
-                try {
-                    isVerified = Boolean(await AgeVerification.exists({ userId: interaction.user.id }));
-                } catch (err) {
-                    console.error('age verification lookup error:', err);
-                    return interaction.update({
-                        content: '❌ I could not check your age verification right now. Please try again later.',
-                        components: []
-                    });
-                }
-
-                if (!isVerified) {
-    return interaction.update({
-        content: `🔞 **This category is restricted to verified adults.**\n\n👤 **Owner:** \`_h8rtless_\`\n💬 Join our support server to open a ticket and verify your age:\nhttps://discord.gg/H4Af2y4RD8`,
-        components: []
-    });
-}
-
-                if (interaction.guildId) {
-                    return interaction.update({
-                        content: '🔞 18+ recommendations are available in DMs only. Please run `/genre` in a DM after your age has been verified.',
-                        components: []
-                    });
-                }
-            }
-
-            await interaction.deferUpdate();
-
-            const gqlQuery = `
-            query ($type: MediaType, $genre: String, $tag: String, $status: MediaStatus) {
-  Page (page: 1, perPage: 10) {
-    media (type: $type, genre: $genre, tag: $tag, status: $status, sort: SCORE_DESC) {
-                  id
-                  title { romaji english }
-                  episodes
-                  chapters
-                  status
-                  averageScore
-                  description(asHtml: false)
-                  coverImage { large }
-                  siteUrl
-                }
-              }
-            }`;
-            
-client.on('interactionCreate', async (interaction) => {
-    // لو بتفحص زرار معين مثلاً:
-    if (interaction.isButton() && interaction.customId === 'adult_category_btn') {
-        
-        // حط الكود هنا 👇
-        let userDoc = await User.findOne({ userId: interaction.user.id });
-        const isVerified = userDoc ? userDoc.isVerified : false;
-
-        if (!isVerified) {
-            return interaction.update({
-                content: `🔞 **This category is restricted to verified adults.**\n\n👤 **Owner:** \`_h8rtless_\`\n💬 Join our support server to open a ticket and verify your age:\nhttps://discord.gg/H4Af2y4RD8`,
+                content: '❌ That category is no longer available. Please run `/genre` again.',
                 components: []
             });
         }
 
-        // باقي كود العرض للناس الموثقة هنا...
-    }
-});
-   
+        if (genreDefinition.adultOnly) {
+            let isVerified = false;
             try {
-                const data = await fetchAniList(gqlQuery, {
-    type: mediaType === 'manga' ? 'MANGA' : 'ANIME',
-    genre: genreDefinition.filterType === 'genre' ? genreDefinition.apiValue : null,
-    tag: genreDefinition.filterType === 'tag' ? genreDefinition.apiValue : null,
-    status: genreChoice === 'ongoing' ? 'RELEASING' : 'FINISHED'
-});
-const mediaList = data?.Page?.media;
-                if (!mediaList || mediaList.length === 0) {
-                    return interaction.editReply({
-                        content: `No ${mediaType} found for **${genreDefinition.label}**.`,
-                        components: []
-                    });
-                }
-
-                const media = mediaList[Math.floor(Math.random() * mediaList.length)];
-                const title = (media.title && (media.title.english || media.title.romaji)) || `${mediaType} title`;
-                const cleanDesc = media.description
-                    ? media.description.replace(/<[^>]*>?/gm, '').substring(0, 300) + '...'
-                    : 'No synopsis available.';
-
-                const embed = new EmbedBuilder()
-                    .setTitle(`🎭 ${genreDefinition.label} ${mediaType === 'anime' ? 'Anime' : 'Manga'} Recommendation: ${title}`)
-                    .setURL(media.siteUrl || 'https://anilist.co')
-                    .setThumbnail(media.coverImage?.large || 'https://i.imgur.com/AGv4yDI.png')
-                    .addFields(
-                        {
-                            name: mediaType === 'anime' ? 'Episodes' : 'Chapters',
-                            value: `${mediaType === 'anime' ? (media.episodes ?? 'N/A') : (media.chapters ?? 'N/A')}`,
-                            inline: true
-                        },
-                        { name: 'Status', value: media.status || 'N/A', inline: true },
-                        { name: 'Score', value: media.averageScore ? `${media.averageScore} / 100` : 'N/A', inline: true }
-                    )
-                    .setDescription(cleanDesc)
-                    .setColor(genreDefinition.adultOnly ? '#8e44ad' : '#1abc9c');
-
-                const components = [];
-                if (mediaType === 'anime') {
-                    const trackBtn = new ButtonBuilder()
-                        .setCustomId(`track_btn_${media.id}`)
-                        .setLabel('🎯 Channel Track')
-                        .setStyle(ButtonStyle.Success);
-
-                    const favBtn = new ButtonBuilder()
-                        .setCustomId(`fav_btn_${media.id}`)
-                        .setLabel('⭐ Favorite (DM Alert)')
-                        .setStyle(ButtonStyle.Primary);
-
-                    const buttons = [favBtn];
-                    if (interaction.guildId && anime.status !== 'FINISHED') {
-  buttons.unshift(trackBtn);
-}
-                    components.push(new ActionRowBuilder().addComponents(...buttons));
-                }
-
-                await interaction.editReply({ content: '', embeds: [embed], components });
+                isVerified = Boolean(await AgeVerification.exists({ userId: interaction.user.id }));
             } catch (err) {
-                console.error('genre recommendation error:', err);
-                await interaction.editReply({
-                    content: '❌ Failed to fetch this recommendation. Please try `/genre` again.',
+                console.error('age verification lookup error:', err);
+                return interaction.update({
+                    content: '❌ I could not check your age verification right now. Please try again later.',
+                    components: []
+                });
+            }
+
+            if (!isVerified) {
+                return interaction.update({
+                    content: `🔞 **This category is restricted to verified adults.**\n\n👤 **Owner:** \`_h8rtless_\`\n💬 Join our support server to open a ticket and verify your age:\nhttps://discord.gg/H4Af2y4RD8`,
+                    components: []
+                });
+            }
+
+            if (interaction.guildId) {
+                return interaction.update({
+                    content: '🔞 18+ recommendations are available in DMs only. Please run `/genre` in a DM after your age has been verified.',
                     components: []
                 });
             }
         }
-        return;
-    }
 
-    // 🔘 Handle Interactive Buttons
+        await interaction.deferUpdate();
+
+        const gqlQuery = `
+        query ($type: MediaType, $genre: String, $tag: String, $status: MediaStatus) {
+          Page (page: 1, perPage: 10) {
+            media (type: $type, genre: $genre, tag: $tag, status: $status, sort: SCORE_DESC) {
+              id
+              title { romaji english }
+              episodes
+              chapters
+              status
+              averageScore
+              description(asHtml: false)
+              coverImage { large }
+              siteUrl
+            }
+          }
+        }`;
+
+        let mediaList = null;
+
+        // 1. Try AniList First
+        try {
+            const data = await fetchAniList(gqlQuery, {
+                type: mediaType === 'manga' ? 'MANGA' : 'ANIME',
+                genre: genreDefinition.filterType === 'genre' ? genreDefinition.apiValue : null,
+                tag: genreDefinition.filterType === 'tag' ? genreDefinition.apiValue : null,
+                status: genreChoice === 'ongoing' ? 'RELEASING' : null
+            });
+            mediaList = data?.Page?.media;
+        } catch (err) {
+            console.error('Genre AniList Fetch Error:', err.message);
+        }
+
+        // 2. Fallback (If AniList failed or returned no data)
+        if (!mediaList || mediaList.length === 0) {
+            console.log(`AniList failed for genre [${genreDefinition.label}]. Attempting Fallback...`);
+            try {
+                const jikanData = await getAnimeJikan(genreDefinition.label);
+
+                if (jikanData) {
+                    const fallbackEmbed = new EmbedBuilder()
+                        .setTitle(`🎭 ${genreDefinition.label} ${mediaType === 'anime' ? 'Anime' : 'Manga'} Recommendation: ${jikanData.title}`)
+                        .setURL(jikanData.url || 'https://kitsu.io')
+                        .setThumbnail(jikanData.image || 'https://i.imgur.com/AGv4yDI.png')
+                        .addFields(
+                            {
+                                name: mediaType === 'anime' ? 'Episodes' : 'Chapters',
+                                value: `${mediaType === 'anime' ? (jikanData.episodes ?? 'N/A') : (jikanData.chapters ?? 'N/A')}`,
+                                inline: true
+                            },
+                            { name: 'Status', value: jikanData.status || 'N/A', inline: true },
+                            { name: 'Score', value: jikanData.score || 'N/A', inline: true }
+                        )
+                        .setDescription(jikanData.synopsis)
+                        .setColor(genreDefinition.adultOnly ? '#8e44ad' : '#1abc9c');
+
+                    await interaction.editReply({ content: '', embeds: [fallbackEmbed], components: [] });
+
+                    // Dev Alert الخفي لصهيب
+                    const DEV_ID = '1326815636395003966';
+                    if (interaction.user.id === DEV_ID) {
+                        await interaction.followUp({
+                            content: '🚨 **[Dev Alert]:** AniList genre lookup was unreachable. Recommendation fetched via Emergency Backup (Kitsu)!',
+                            ephemeral: true
+                        });
+                    }
+
+                    return;
+                }
+            } catch (fallbackErr) {
+                console.error('Genre Fallback Error:', fallbackErr);
+            }
+
+            return await interaction.editReply({
+                content: `❌ No ${mediaType} found for **${genreDefinition.label}** on AniList or Emergency Backup.`,
+                components: []
+            });
+        }
+
+        // 3. Render AniList Data (If AniList Succeeded)
+        try {
+            const media = mediaList[Math.floor(Math.random() * mediaList.length)];
+            const title = (media.title && (media.title.english || media.title.romaji)) || `${mediaType} title`;
+            const cleanDesc = media.description
+                ? media.description.replace(/<[^>]*>?/gm, '').substring(0, 300) + '...'
+                : 'No synopsis available.';
+
+            const embed = new EmbedBuilder()
+                .setTitle(`🎭 ${genreDefinition.label} ${mediaType === 'anime' ? 'Anime' : 'Manga'} Recommendation: ${title}`)
+                .setURL(media.siteUrl || 'https://anilist.co')
+                .setThumbnail(media.coverImage?.large || 'https://i.imgur.com/AGv4yDI.png')
+                .addFields(
+                    {
+                        name: mediaType === 'anime' ? 'Episodes' : 'Chapters',
+                        value: `${mediaType === 'anime' ? (media.episodes ?? 'N/A') : (media.chapters ?? 'N/A')}`,
+                        inline: true
+                    },
+                    { name: 'Status', value: media.status || 'N/A', inline: true },
+                    { name: 'Score', value: media.averageScore ? `${media.averageScore} / 100` : 'N/A', inline: true }
+                )
+                .setDescription(cleanDesc)
+                .setColor(genreDefinition.adultOnly ? '#8e44ad' : '#1abc9c');
+
+            const components = [];
+            if (mediaType === 'anime') {
+                const trackBtn = new ButtonBuilder()
+                    .setCustomId(`track_btn_${media.id}`)
+                    .setLabel('🎯 Channel Track')
+                    .setStyle(ButtonStyle.Success);
+
+                const favBtn = new ButtonBuilder()
+                    .setCustomId(`fav_btn_${media.id}`)
+                    .setLabel('⭐ Favorite (DM Alert)')
+                    .setStyle(ButtonStyle.Primary);
+
+                const buttons = [favBtn];
+                if (interaction.guildId && media.status !== 'FINISHED') {
+                    buttons.unshift(trackBtn);
+                }
+                components.push(new ActionRowBuilder().addComponents(...buttons));
+            }
+
+            await interaction.editReply({ content: '', embeds: [embed], components });
+        } catch (err) {
+            console.error('genre recommendation error:', err);
+            await interaction.editReply({
+                content: '❌ Failed to fetch this recommendation. Please try `/genre` again.',
+                components: []
+            });
+        }
+    }
+    return;
+}
+   // 🔘 Handle Interactive Buttons
     if (interaction.isButton()) {
         if (interaction.customId.startsWith('track_btn_')) {
             if (!interaction.guildId) {
@@ -490,32 +518,44 @@ const mediaList = data?.Page?.media;
               }
             }`;
 
+            let anime = null;
+
             try {
                 const data = await fetchAniList(gqlQuery, { id: animeId });
-                const anime = data?.Media;
-
-                if (!anime) return interaction.editReply({ content: 'Anime not found!' });
-
-                const animeTitle = (anime.title && (anime.title.english || anime.title.romaji)) || 'Unknown Anime';
-                const existing = await TrackedItem.findOne({ guildId: interaction.guildId, animeId: anime.id });
-
-                if (existing) {
-                    return await interaction.editReply({ content: `**${animeTitle}** is already tracked in this server!` });
-                }
-
-                await TrackedItem.create({
-                    guildId: interaction.guildId,
-                    channelId: interaction.channelId,
-                    animeId: anime.id,
-                    animeTitle: animeTitle,
-                    lastEpisodes: anime.episodes || 0,
-                    lastStatus: anime.status || 'UNKNOWN'
-                });
-
-                await interaction.editReply({ content: `🎯 Successfully started tracking **[${animeTitle}](${anime.siteUrl})** in this channel!` });
+                anime = data?.Media;
             } catch (err) {
-                await interaction.editReply({ content: 'Failed to track via button.' });
+                console.error('Track Button AniList Error:', err.message);
             }
+
+            // Fallback لو AniList واقعة
+            if (!anime) {
+                const DEV_ID = '1326815636395003966';
+                if (interaction.user.id === DEV_ID) {
+                    await interaction.followUp({
+                        content: '🚨 **[Dev Alert]:** AniList unreachable during track operation.',
+                        ephemeral: true
+                    });
+                }
+                return await interaction.editReply({ content: '❌ Could not connect to primary services to track this anime. Please try again in a moment.' });
+            }
+
+            const animeTitle = (anime.title && (anime.title.english || anime.title.romaji)) || 'Unknown Anime';
+            const existing = await TrackedItem.findOne({ guildId: interaction.guildId, animeId: anime.id });
+
+            if (existing) {
+                return await interaction.editReply({ content: `**${animeTitle}** is already tracked in this server!` });
+            }
+
+            await TrackedItem.create({
+                guildId: interaction.guildId,
+                channelId: interaction.channelId,
+                animeId: anime.id,
+                animeTitle: animeTitle,
+                lastEpisodes: anime.episodes || 0,
+                lastStatus: anime.status || 'UNKNOWN'
+            });
+
+            await interaction.editReply({ content: `🎯 Successfully started tracking **[${animeTitle}](${anime.siteUrl})** in this channel!` });
         }
         else if (interaction.customId.startsWith('fav_btn_')) {
             await interaction.deferReply({ ephemeral: true });
@@ -531,40 +571,47 @@ const mediaList = data?.Page?.media;
               }
             }`;
 
+            let anime = null;
+
             try {
                 const data = await fetchAniList(gqlQuery, { id: animeId });
-                const anime = data?.Media;
-
-                if (!anime) return interaction.editReply({ content: 'Anime not found!' });
-
-                const animeTitle = (anime.title && (anime.title.english || anime.title.romaji)) || 'Unknown Anime';
-                const existing = await FavoriteItem.findOne({ userId: interaction.user.id, animeId: anime.id });
-
-                if (existing) {
-                    return await interaction.editReply({ content: `⭐ **${animeTitle}** is already in your personal favorites!` });
-                }
-
-                await FavoriteItem.create({
-                    userId: interaction.user.id,
-                    animeId: anime.id,
-                    animeTitle: animeTitle,
-                    lastEpisodes: anime.episodes || 0
-                });
-
-                await interaction.editReply({ content: `⭐ Added **[${animeTitle}](${anime.siteUrl})** to your personal favorites! You will receive direct messages (DMs) when new episodes arrive.` });
+                anime = data?.Media;
             } catch (err) {
-                await interaction.editReply({ content: 'Failed to add to personal favorites.' });
+                console.error('Fav Button AniList Error:', err.message);
             }
+
+            // Fallback لو AniList واقعة
+            if (!anime) {
+                const DEV_ID = '1326815636395003966';
+                if (interaction.user.id === DEV_ID) {
+                    await interaction.followUp({
+                        content: '🚨 **[Dev Alert]:** AniList unreachable during favorite operation.',
+                        ephemeral: true
+                    });
+                }
+                return await interaction.editReply({ content: '❌ Could not connect to primary services to save favorite. Please try again in a moment.' });
+            }
+
+            const animeTitle = (anime.title && (anime.title.english || anime.title.romaji)) || 'Unknown Anime';
+            const existing = await FavoriteItem.findOne({ userId: interaction.user.id, animeId: anime.id });
+
+            if (existing) {
+                return await interaction.editReply({ content: `⭐ **${animeTitle}** is already in your personal favorites!` });
+            }
+
+            await FavoriteItem.create({
+                userId: interaction.user.id,
+                animeId: anime.id,
+                animeTitle: animeTitle,
+                lastEpisodes: anime.episodes || 0
+            });
+
+            await interaction.editReply({ content: `⭐ Added **[${animeTitle}](${anime.siteUrl})** to your personal favorites! You will receive direct messages (DMs) when new episodes arrive.` });
         }
-        // FIX: this handler was completely missing, so the "📖 More Info" button
-        // on /character results just failed silently ("This interaction failed").
         else if (interaction.customId.startsWith('char_info_')) {
             await interaction.deferReply({ ephemeral: true });
             const charId = parseInt(interaction.customId.replace('char_info_', ''));
 
-            // FIX: expanded the query — added description, image, and the anime
-            // appearances + Japanese voice actor so "More Info" actually shows
-            // more useful data than before, not just name/age/gender.
             const gqlQuery = `
             query ($id: Int) {
               Character (id: $id) {
@@ -590,60 +637,67 @@ const mediaList = data?.Page?.media;
               }
             }`;
 
+            let char = null;
+
             try {
                 const data = await fetchAniList(gqlQuery, { id: charId });
-                const char = data?.Character;
-
-                if (!char) return interaction.editReply({ content: 'Character not found!' });
-
-                const altNames = char.name?.alternative?.filter(Boolean).join(', ') || 'N/A';
-                const dob = (char.dateOfBirth && (char.dateOfBirth.month || char.dateOfBirth.day))
-                    ? `${char.dateOfBirth.month ?? '?'}/${char.dateOfBirth.day ?? '?'}`
-                    : 'N/A';
-
-                // FIX: full bio, not cut off — same spoiler/HTML cleanup as the
-                // main /character command, capped only at Discord's hard embed
-                // description limit (4096 chars) as a safety net, not a real truncation.
-                let cleanDesc = char.description ? char.description
-                    .replace(/~!/g, '||')
-                    .replace(/!~/g, '||')
-                    .replace(/<[^>]*>/gm, '') : 'No description available.';
-                if (cleanDesc.length > 4000) cleanDesc = cleanDesc.substring(0, 4000) + '...';
-
-                const appearsIn = char.media?.edges
-                    ?.map(e => e.node?.title?.english || e.node?.title?.romaji)
-                    .filter(Boolean)
-                    .slice(0, 5)
-                    .join('\n') || 'N/A';
-
-                const voiceActorJP = char.media?.edges?.find(e => e.voiceActors?.[0]?.name?.full)?.voiceActors?.[0]?.name?.full || 'N/A';
-
-                const embed = new EmbedBuilder()
-                    .setTitle(`📖 ${char.name?.full || 'Unknown'} — More Info`)
-                    .setURL(char.siteUrl || 'https://anilist.co')
-                    .setDescription(cleanDesc)
-                    .setThumbnail(char.image?.large || 'https://i.imgur.com/AGv4yDI.png')
-                    .addFields(
-                        { name: 'Native Name', value: char.name?.native || 'N/A', inline: true },
-                        { name: 'Gender', value: char.gender || 'N/A', inline: true },
-                        { name: 'Age', value: char.age || 'N/A', inline: true },
-                        { name: 'Date of Birth', value: dob, inline: true },
-                        { name: 'Favorites', value: `${char.favourites ? char.favourites.toLocaleString() : 0}`, inline: true },
-                        { name: 'Voice Actor (JP)', value: voiceActorJP, inline: true },
-                        { name: 'Appears In', value: appearsIn, inline: false },
-                        { name: 'Alternative Names', value: altNames, inline: false }
-                    )
-                    .setColor('#9b59b6');
-
-                await interaction.editReply({ embeds: [embed] });
+                char = data?.Character;
             } catch (err) {
-                console.error('char_info button error:', err);
-                await interaction.editReply({ content: 'Failed to fetch character info.' });
+                console.error('Character Info AniList Error:', err.message);
             }
+
+            // Fallback لو AniList واقعة
+            if (!char) {
+                const DEV_ID = '1326815636395003966';
+                if (interaction.user.id === DEV_ID) {
+                    await interaction.followUp({
+                        content: '🚨 **[Dev Alert]:** AniList unreachable during character info fetch.',
+                        ephemeral: true
+                    });
+                }
+                return await interaction.editReply({ content: '❌ Character information is currently unavailable from primary services.' });
+            }
+
+            const altNames = char.name?.alternative?.filter(Boolean).join(', ') || 'N/A';
+            const dob = (char.dateOfBirth && (char.dateOfBirth.month || char.dateOfBirth.day))
+                ? `${char.dateOfBirth.month ?? '?'}/${char.dateOfBirth.day ?? '?'}`
+                : 'N/A';
+
+            let cleanDesc = char.description ? char.description
+                .replace(/~!/g, '||')
+                .replace(/!~/g, '||')
+                .replace(/<[^>]*>/gm, '') : 'No description available.';
+            if (cleanDesc.length > 4000) cleanDesc = cleanDesc.substring(0, 4000) + '...';
+
+            const appearsIn = char.media?.edges
+                ?.map(e => e.node?.title?.english || e.node?.title?.romaji)
+                .filter(Boolean)
+                .slice(0, 5)
+                .join('\n') || 'N/A';
+
+            const voiceActorJP = char.media?.edges?.find(e => e.voiceActors?.[0]?.name?.full)?.voiceActors?.[0]?.name?.full || 'N/A';
+
+            const embed = new EmbedBuilder()
+                .setTitle(`📖 ${char.name?.full || 'Unknown'} — More Info`)
+                .setURL(char.siteUrl || 'https://anilist.co')
+                .setDescription(cleanDesc)
+                .setThumbnail(char.image?.large || 'https://i.imgur.com/AGv4yDI.png')
+                .addFields(
+                    { name: 'Native Name', value: char.name?.native || 'N/A', inline: true },
+                    { name: 'Gender', value: char.gender || 'N/A', inline: true },
+                    { name: 'Age', value: char.age || 'N/A', inline: true },
+                    { name: 'Date of Birth', value: dob, inline: true },
+                    { name: 'Favorites', value: `${char.favourites ? char.favourites.toLocaleString() : 0}`, inline: true },
+                    { name: 'Voice Actor (JP)', value: voiceActorJP, inline: true },
+                    { name: 'Appears In', value: appearsIn, inline: false },
+                    { name: 'Alternative Names', value: altNames, inline: false }
+                )
+                .setColor('#9b59b6');
+
+            await interaction.editReply({ embeds: [embed] });
         }
         return;
     }
-
     if (!interaction.isChatInputCommand()) return;
 
     const { commandName } = interaction;
