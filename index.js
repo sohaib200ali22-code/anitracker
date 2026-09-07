@@ -3,7 +3,7 @@ const axios = require('axios');
 const http = require('http');
 const mongoose = require('mongoose');
 require('dotenv').config();
-
+const { getAnimeJikan } = require('./jikanFallback');
 // Web server workaround to keep Render alive 24/7
 http.createServer((req, res) => {
     res.write("AniTracker is running!");
@@ -1089,29 +1089,54 @@ const mediaList = data?.Page?.media;
         }`;
 
         try {
-            const data = await fetchAniList(gqlQuery, { search: searchQuery });
-            const anime = data?.Media;
+            let data = await fetchAniList(gqlQuery, { search: searchQuery });
+            let anime = data?.Media;
 
-            if (!anime) return interaction.editReply('Anime not found!');
+            // 🆘 Fallback Logic (إذا AniList واقف أو رجّع null)
+            if (!anime) {
+                console.log('AniList unavailable or failed. Switching to Jikan Fallback...');
+                const jikanData = await getAnimeJikan(searchQuery);
+
+                if (!jikanData) {
+                    return interaction.editReply('❌ Anime not found on AniList or MyAnimeList.');
+                }
+
+                const fallbackEmbed = new EmbedBuilder()
+                    .setTitle(jikanData.title)
+                    .setURL(jikanData.url || 'https://myanimelist.net')
+                    .setThumbnail(jikanData.image || 'https://i.imgur.com/AGv4yDI.png')
+                    .addFields(
+                        { name: 'Episodes', value: `${jikanData.episodes ?? 'N/A'}`, inline: true },
+                        { name: 'Status', value: jikanData.status || 'N/A', inline: true },
+                        { name: 'Score', value: jikanData.score ? `${jikanData.score} / 10` : 'N/A', inline: true }
+                    )
+                    .setDescription(jikanData.synopsis)
+                    .setFooter({ text: '⚠️ Source: MyAnimeList (AniList Emergency Backup)' })
+                    .setColor('#FF5733');
+
+                return interaction.editReply({ embeds: [fallbackEmbed], components: [] });
+            }
+
+            // 🔒 Age Verification Check (AniList Data)
             if (anime.isAdult) {
-    let isVerified = false;
-    try {
-        isVerified = Boolean(await AgeVerification.exists({ userId: interaction.user.id }));
-    } catch (err) {
-        console.error('age verification lookup error:', err);
-    }
+                let isVerified = false;
+                try {
+                    isVerified = Boolean(await AgeVerification.exists({ userId: interaction.user.id }));
+                } catch (err) {
+                    console.error('age verification lookup error:', err);
+                }
 
-    if (!isVerified) {
-        return interaction.editReply({
-            content: `🔞 **This anime is restricted to verified adults.**\n\n` +
-                     `👤 **Owner:** \`_h8rtless_\`\n` +
-                     `💬 Join our support server to open a ticket and verify your age:\n` +
-                     `https://discord.gg/H4Af2y4RD8`,
-            embeds: [],
-            components: []
-        });
-    }
-}
+                if (!isVerified) {
+                    return interaction.editReply({
+                        content: `🔞 **This anime is restricted to verified adults.**\n\n` +
+                                 `👤 **Owner:** \`_h8rtless_\`\n` +
+                                 `💬 Join our support server to open a ticket and verify your age:\n` +
+                                 `https://discord.gg/H4Af2y4RD8`,
+                        embeds: [],
+                        components: []
+                    });
+                }
+            }
 
             const title = (anime.title && (anime.title.english || anime.title.romaji)) || searchQuery;
             const cleanDesc = anime.description ? anime.description.replace(/<[^>]*>?/gm, '').substring(0, 300) + '...' : 'No synopsis available.';
@@ -1144,14 +1169,14 @@ const mediaList = data?.Page?.media;
             }
 
             const row = new ActionRowBuilder().addComponents(...buttons);
+            const components = anime.status === 'FINISHED' ? [] : [row];
 
-           const components = anime.status === 'FINISHED' ? [] : [row];
-
-await interaction.editReply({ 
-    embeds: [embed], 
-    components: components 
-});
+            await interaction.editReply({ 
+                embeds: [embed], 
+                components: components 
+            });
         } catch (err) {
+            console.error('Anime Command Error:', err);
             await interaction.editReply('Failed to fetch anime data.');
         }
     }
