@@ -1068,7 +1068,7 @@ const mediaList = data?.Page?.media;
         await interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
     }
 
-   // 🔍 Anime Command
+  // 🔍 Anime Command
     else if (commandName === 'anime') {
         await interaction.deferReply();
         const searchQuery = interaction.options.getString('title');
@@ -1098,16 +1098,16 @@ const mediaList = data?.Page?.media;
             console.error('AniList Fetch Error:', err.message);
         }
 
-        // 2. Fallback to Jikan if AniList failed or returned no data
+        // 2. Fallback to Kitsu/Jikan if AniList failed or returned no data
         if (!anime) {
-            console.log('AniList failed or returned no data. Fetching from Jikan Fallback...');
+            console.log('AniList failed or returned no data. Fetching from Fallback...');
             try {
                 const jikanData = await getAnimeJikan(searchQuery);
 
                 if (jikanData) {
                     const fallbackEmbed = new EmbedBuilder()
                         .setTitle(jikanData.title)
-                        .setURL(jikanData.url || 'https://myanimelist.net')
+                        .setURL(jikanData.url || 'https://kitsu.io')
                         .setThumbnail(jikanData.image || 'https://i.imgur.com/AGv4yDI.png')
                         .addFields(
                             { name: 'Episodes', value: `${jikanData.episodes ?? 'N/A'}`, inline: true },
@@ -1115,21 +1115,28 @@ const mediaList = data?.Page?.media;
                             { name: 'Score', value: jikanData.score || 'N/A', inline: true }
                         )
                         .setDescription(jikanData.synopsis)
-                        .setFooter({ text: '⚠️ Source: MyAnimeList (AniList Emergency Backup)' })
                         .setColor('#FF5733');
 
+                    // 1. إرسال الـ Embed العادي للجميع في الشات
                     await interaction.editReply({ embeds: [fallbackEmbed], components: [] });
 
-await interaction.followUp({
-    content: '🚨 **[Dev Alert]:** AniList was unreachable. This response was fetched via the Emergency Backup (Kitsu)!',
-    ephemeral: true
-});
+                    // 2. إرسال إشعار مخفي للـ Dev فقط
+                    const DEV_ID = '1326815636395003966'; // 👈 حط الـ Discord ID بتاعك هنا
+
+                    if (interaction.user.id === DEV_ID) {
+                        await interaction.followUp({
+                            content: '🚨 **[Dev Alert]:** AniList was unreachable. This response was fetched via the Emergency Backup (Kitsu)!',
+                            ephemeral: true
+                        });
+                    }
+
+                    return; // إنهاء الدالة بنجاح عشان ما يوصل للسطر اللي تحته
                 }
             } catch (fallbackErr) {
-                console.error('Jikan Fallback Error:', fallbackErr);
+                console.error('Fallback Error:', fallbackErr);
             }
 
-            return await interaction.editReply('❌ Anime not found on AniList or MyAnimeList.');
+            return await interaction.editReply('❌ Anime not found on AniList or Emergency Backup.');
         }
 
         // 3. Render AniList Data (If AniList succeeded)
