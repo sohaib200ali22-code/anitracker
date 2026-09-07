@@ -311,7 +311,7 @@ client.once('ready', async () => {
 });
 
 client.on('interactionCreate', async interaction => {
-    // 🎲 Genre recommendation menus
+   // 🎲 Genre recommendation menus & 🔘 Handle Interactive Buttons
 if (interaction.isStringSelectMenu()) {
     if (interaction.customId === 'genre_media_select') {
         const mediaType = interaction.values[0];
@@ -398,7 +398,8 @@ if (interaction.isStringSelectMenu()) {
         if (!mediaList || mediaList.length === 0) {
             console.log(`AniList failed for genre [${genreDefinition.label}]. Attempting Fallback...`);
             try {
-                const jikanData = await getAnimeJikan(genreDefinition.label);
+                const isOngoing = genreChoice === 'ongoing';
+                const jikanData = await getAnimeJikan(genreDefinition.label, isOngoing);
 
                 if (jikanData) {
                     const fallbackEmbed = new EmbedBuilder()
@@ -419,11 +420,10 @@ if (interaction.isStringSelectMenu()) {
 
                     await interaction.editReply({ content: '', embeds: [fallbackEmbed], components: [] });
 
-                    // Dev Alert الخفي لصهيب
                     const DEV_ID = '1326815636395003966';
                     if (interaction.user.id === DEV_ID) {
                         await interaction.followUp({
-                            content: '🚨 **[Dev Alert]:** AniList genre lookup was unreachable. Recommendation fetched via Emergency Backup (Kitsu)!',
+                            content: '🚨 **[Dev Alert]:** AniList genre lookup was unreachable. Recommendation fetched via Emergency Backup!',
                             ephemeral: true
                         });
                     }
@@ -440,7 +440,7 @@ if (interaction.isStringSelectMenu()) {
             });
         }
 
-        // 3. Render AniList Data (If AniList Succeeded)
+        // 3. Render AniList Data
         try {
             const media = mediaList[Math.floor(Math.random() * mediaList.length)];
             const title = (media.title && (media.title.english || media.title.romaji)) || `${mediaType} title`;
@@ -494,209 +494,204 @@ if (interaction.isStringSelectMenu()) {
     }
     return;
 }
-   // 🔘 Handle Interactive Buttons
-    if (interaction.isButton()) {
-        if (interaction.customId.startsWith('track_btn_')) {
-            if (!interaction.guildId) {
-                return interaction.reply({
-                    content: '🎯 Channel tracking works inside a server. Use `/favorite <title>` for personal DM alerts.',
+
+if (interaction.isButton()) {
+    if (interaction.customId.startsWith('track_btn_')) {
+        if (!interaction.guildId) {
+            return interaction.reply({
+                content: '🎯 Channel tracking works inside a server. Use `/favorite <title>` for personal DM alerts.',
+                ephemeral: true
+            });
+        }
+
+        await interaction.deferReply({ ephemeral: true });
+        const animeId = parseInt(interaction.customId.replace('track_btn_', ''));
+
+        const gqlQuery = `
+        query ($id: Int) {
+          Media (id: $id, type: ANIME) {
+            id
+            title { romaji english }
+            episodes
+            status
+            siteUrl
+          }
+        }`;
+
+        let anime = null;
+        try {
+            const data = await fetchAniList(gqlQuery, { id: animeId });
+            anime = data?.Media;
+        } catch (err) {
+            console.error('Track Button AniList Error:', err.message);
+        }
+
+        if (!anime) {
+            const DEV_ID = '1326815636395003966';
+            if (interaction.user.id === DEV_ID) {
+                await interaction.followUp({
+                    content: '🚨 **[Dev Alert]:** AniList unreachable during track operation.',
                     ephemeral: true
                 });
             }
-
-            await interaction.deferReply({ ephemeral: true });
-            const animeId = parseInt(interaction.customId.replace('track_btn_', ''));
-
-            const gqlQuery = `
-            query ($id: Int) {
-              Media (id: $id, type: ANIME) {
-                id
-                title { romaji english }
-                episodes
-                status
-                siteUrl
-              }
-            }`;
-
-            let anime = null;
-
-            try {
-                const data = await fetchAniList(gqlQuery, { id: animeId });
-                anime = data?.Media;
-            } catch (err) {
-                console.error('Track Button AniList Error:', err.message);
-            }
-
-            // Fallback لو AniList واقعة
-            if (!anime) {
-                const DEV_ID = '1326815636395003966';
-                if (interaction.user.id === DEV_ID) {
-                    await interaction.followUp({
-                        content: '🚨 **[Dev Alert]:** AniList unreachable during track operation.',
-                        ephemeral: true
-                    });
-                }
-                return await interaction.editReply({ content: '❌ Could not connect to primary services to track this anime. Please try again in a moment.' });
-            }
-
-            const animeTitle = (anime.title && (anime.title.english || anime.title.romaji)) || 'Unknown Anime';
-            const existing = await TrackedItem.findOne({ guildId: interaction.guildId, animeId: anime.id });
-
-            if (existing) {
-                return await interaction.editReply({ content: `**${animeTitle}** is already tracked in this server!` });
-            }
-
-            await TrackedItem.create({
-                guildId: interaction.guildId,
-                channelId: interaction.channelId,
-                animeId: anime.id,
-                animeTitle: animeTitle,
-                lastEpisodes: anime.episodes || 0,
-                lastStatus: anime.status || 'UNKNOWN'
-            });
-
-            await interaction.editReply({ content: `🎯 Successfully started tracking **[${animeTitle}](${anime.siteUrl})** in this channel!` });
+            return await interaction.editReply({ content: '❌ Could not connect to primary services to track this anime. Please try again in a moment.' });
         }
-        else if (interaction.customId.startsWith('fav_btn_')) {
-            await interaction.deferReply({ ephemeral: true });
-            const animeId = parseInt(interaction.customId.replace('fav_btn_', ''));
 
-            const gqlQuery = `
-            query ($id: Int) {
-              Media (id: $id, type: ANIME) {
-                id
-                title { romaji english }
-                episodes
-                siteUrl
-              }
-            }`;
+        const animeTitle = (anime.title && (anime.title.english || anime.title.romaji)) || 'Unknown Anime';
+        const existing = await TrackedItem.findOne({ guildId: interaction.guildId, animeId: anime.id });
 
-            let anime = null;
-
-            try {
-                const data = await fetchAniList(gqlQuery, { id: animeId });
-                anime = data?.Media;
-            } catch (err) {
-                console.error('Fav Button AniList Error:', err.message);
-            }
-
-            // Fallback لو AniList واقعة
-            if (!anime) {
-                const DEV_ID = '1326815636395003966';
-                if (interaction.user.id === DEV_ID) {
-                    await interaction.followUp({
-                        content: '🚨 **[Dev Alert]:** AniList unreachable during favorite operation.',
-                        ephemeral: true
-                    });
-                }
-                return await interaction.editReply({ content: '❌ Could not connect to primary services to save favorite. Please try again in a moment.' });
-            }
-
-            const animeTitle = (anime.title && (anime.title.english || anime.title.romaji)) || 'Unknown Anime';
-            const existing = await FavoriteItem.findOne({ userId: interaction.user.id, animeId: anime.id });
-
-            if (existing) {
-                return await interaction.editReply({ content: `⭐ **${animeTitle}** is already in your personal favorites!` });
-            }
-
-            await FavoriteItem.create({
-                userId: interaction.user.id,
-                animeId: anime.id,
-                animeTitle: animeTitle,
-                lastEpisodes: anime.episodes || 0
-            });
-
-            await interaction.editReply({ content: `⭐ Added **[${animeTitle}](${anime.siteUrl})** to your personal favorites! You will receive direct messages (DMs) when new episodes arrive.` });
+        if (existing) {
+            return await interaction.editReply({ content: `**${animeTitle}** is already tracked in this server!` });
         }
-        else if (interaction.customId.startsWith('char_info_')) {
-            await interaction.deferReply({ ephemeral: true });
-            const charId = parseInt(interaction.customId.replace('char_info_', ''));
 
-            const gqlQuery = `
-            query ($id: Int) {
-              Character (id: $id) {
-                id
-                name { full native alternative }
-                image { large }
-                description(asHtml: false)
-                gender
-                age
-                dateOfBirth { year month day }
-                favourites
-                siteUrl
-                media (perPage: 5, sort: POPULARITY_DESC) {
-                  edges {
-                    voiceActors (language: JAPANESE) {
-                      name { full }
-                    }
-                    node {
-                      title { romaji english }
-                    }
-                  }
+        await TrackedItem.create({
+            guildId: interaction.guildId,
+            channelId: interaction.channelId,
+            animeId: anime.id,
+            animeTitle: animeTitle,
+            lastEpisodes: anime.episodes || 0,
+            lastStatus: anime.status || 'UNKNOWN'
+        });
+
+        await interaction.editReply({ content: `🎯 Successfully started tracking **[${animeTitle}](${anime.siteUrl})** in this channel!` });
+    }
+    else if (interaction.customId.startsWith('fav_btn_')) {
+        await interaction.deferReply({ ephemeral: true });
+        const animeId = parseInt(interaction.customId.replace('fav_btn_', ''));
+
+        const gqlQuery = `
+        query ($id: Int) {
+          Media (id: $id, type: ANIME) {
+            id
+            title { romaji english }
+            episodes
+            siteUrl
+          }
+        }`;
+
+        let anime = null;
+        try {
+            const data = await fetchAniList(gqlQuery, { id: animeId });
+            anime = data?.Media;
+        } catch (err) {
+            console.error('Fav Button AniList Error:', err.message);
+        }
+
+        if (!anime) {
+            const DEV_ID = '1326815636395003966';
+            if (interaction.user.id === DEV_ID) {
+                await interaction.followUp({
+                    content: '🚨 **[Dev Alert]:** AniList unreachable during favorite operation.',
+                    ephemeral: true
+                });
+            }
+            return await interaction.editReply({ content: '❌ Could not connect to primary services to save favorite. Please try again in a moment.' });
+        }
+
+        const animeTitle = (anime.title && (anime.title.english || anime.title.romaji)) || 'Unknown Anime';
+        const existing = await FavoriteItem.findOne({ userId: interaction.user.id, animeId: anime.id });
+
+        if (existing) {
+            return await interaction.editReply({ content: `⭐ **${animeTitle}** is already in your personal favorites!` });
+        }
+
+        await FavoriteItem.create({
+            userId: interaction.user.id,
+            animeId: anime.id,
+            animeTitle: animeTitle,
+            lastEpisodes: anime.episodes || 0
+        });
+
+        await interaction.editReply({ content: `⭐ Added **[${animeTitle}](${anime.siteUrl})** to your personal favorites! You will receive direct messages (DMs) when new episodes arrive.` });
+    }
+    else if (interaction.customId.startsWith('char_info_')) {
+        await interaction.deferReply({ ephemeral: true });
+        const charId = parseInt(interaction.customId.replace('char_info_', ''));
+
+        const gqlQuery = `
+        query ($id: Int) {
+          Character (id: $id) {
+            id
+            name { full native alternative }
+            image { large }
+            description(asHtml: false)
+            gender
+            age
+            dateOfBirth { year month day }
+            favourites
+            siteUrl
+            media (perPage: 5, sort: POPULARITY_DESC) {
+              edges {
+                voiceActors (language: JAPANESE) {
+                  name { full }
+                }
+                node {
+                  title { romaji english }
                 }
               }
-            }`;
-
-            let char = null;
-
-            try {
-                const data = await fetchAniList(gqlQuery, { id: charId });
-                char = data?.Character;
-            } catch (err) {
-                console.error('Character Info AniList Error:', err.message);
             }
+          }
+        }`;
 
-            // Fallback لو AniList واقعة
-            if (!char) {
-                const DEV_ID = '1326815636395003966';
-                if (interaction.user.id === DEV_ID) {
-                    await interaction.followUp({
-                        content: '🚨 **[Dev Alert]:** AniList unreachable during character info fetch.',
-                        ephemeral: true
-                    });
-                }
-                return await interaction.editReply({ content: '❌ Character information is currently unavailable from primary services.' });
-            }
-
-            const altNames = char.name?.alternative?.filter(Boolean).join(', ') || 'N/A';
-            const dob = (char.dateOfBirth && (char.dateOfBirth.month || char.dateOfBirth.day))
-                ? `${char.dateOfBirth.month ?? '?'}/${char.dateOfBirth.day ?? '?'}`
-                : 'N/A';
-
-            let cleanDesc = char.description ? char.description
-                .replace(/~!/g, '||')
-                .replace(/!~/g, '||')
-                .replace(/<[^>]*>/gm, '') : 'No description available.';
-            if (cleanDesc.length > 4000) cleanDesc = cleanDesc.substring(0, 4000) + '...';
-
-            const appearsIn = char.media?.edges
-                ?.map(e => e.node?.title?.english || e.node?.title?.romaji)
-                .filter(Boolean)
-                .slice(0, 5)
-                .join('\n') || 'N/A';
-
-            const voiceActorJP = char.media?.edges?.find(e => e.voiceActors?.[0]?.name?.full)?.voiceActors?.[0]?.name?.full || 'N/A';
-
-            const embed = new EmbedBuilder()
-                .setTitle(`📖 ${char.name?.full || 'Unknown'} — More Info`)
-                .setURL(char.siteUrl || 'https://anilist.co')
-                .setDescription(cleanDesc)
-                .setThumbnail(char.image?.large || 'https://i.imgur.com/AGv4yDI.png')
-                .addFields(
-                    { name: 'Native Name', value: char.name?.native || 'N/A', inline: true },
-                    { name: 'Gender', value: char.gender || 'N/A', inline: true },
-                    { name: 'Age', value: char.age || 'N/A', inline: true },
-                    { name: 'Date of Birth', value: dob, inline: true },
-                    { name: 'Favorites', value: `${char.favourites ? char.favourites.toLocaleString() : 0}`, inline: true },
-                    { name: 'Voice Actor (JP)', value: voiceActorJP, inline: true },
-                    { name: 'Appears In', value: appearsIn, inline: false },
-                    { name: 'Alternative Names', value: altNames, inline: false }
-                )
-                .setColor('#9b59b6');
-
-            await interaction.editReply({ embeds: [embed] });
+        let char = null;
+        try {
+            const data = await fetchAniList(gqlQuery, { id: charId });
+            char = data?.Character;
+        } catch (err) {
+            console.error('Character Info AniList Error:', err.message);
         }
-        return;
+
+        if (!char) {
+            const DEV_ID = '1326815636395003966';
+            if (interaction.user.id === DEV_ID) {
+                await interaction.followUp({
+                    content: '🚨 **[Dev Alert]:** AniList unreachable during character info fetch.',
+                    ephemeral: true
+                });
+            }
+            return await interaction.editReply({ content: '❌ Character information is currently unavailable from primary services.' });
+        }
+
+        const altNames = char.name?.alternative?.filter(Boolean).join(', ') || 'N/A';
+        const dob = (char.dateOfBirth && (char.dateOfBirth.month || char.dateOfBirth.day))
+            ? `${char.dateOfBirth.month ?? '?'}/${char.dateOfBirth.day ?? '?'}`
+            : 'N/A';
+
+        let cleanDesc = char.description ? char.description
+            .replace(/~!/g, '||')
+            .replace(/!~/g, '||')
+            .replace(/<[^>]*>/gm, '') : 'No description available.';
+        if (cleanDesc.length > 4000) cleanDesc = cleanDesc.substring(0, 4000) + '...';
+
+        const appearsIn = char.media?.edges
+            ?.map(e => e.node?.title?.english || e.node?.title?.romaji)
+            .filter(Boolean)
+            .slice(0, 5)
+            .join('\n') || 'N/A';
+
+        const voiceActorJP = char.media?.edges?.find(e => e.voiceActors?.[0]?.name?.full)?.voiceActors?.[0]?.name?.full || 'N/A';
+
+        const embed = new EmbedBuilder()
+            .setTitle(`📖 ${char.name?.full || 'Unknown'} — More Info`)
+            .setURL(char.siteUrl || 'https://anilist.co')
+            .setDescription(cleanDesc)
+            .setThumbnail(char.image?.large || 'https://i.imgur.com/AGv4yDI.png')
+            .addFields(
+                { name: 'Native Name', value: char.name?.native || 'N/A', inline: true },
+                { name: 'Gender', value: char.gender || 'N/A', inline: true },
+                { name: 'Age', value: char.age || 'N/A', inline: true },
+                { name: 'Date of Birth', value: dob, inline: true },
+                { name: 'Favorites', value: `${char.favourites ? char.favourites.toLocaleString() : 0}`, inline: true },
+                { name: 'Voice Actor (JP)', value: voiceActorJP, inline: true },
+                { name: 'Appears In', value: appearsIn, inline: false },
+                { name: 'Alternative Names', value: altNames, inline: false }
+            )
+            .setColor('#9b59b6');
+
+        await interaction.editReply({ embeds: [embed] });
+    }
+    return;
+}
     }
     if (!interaction.isChatInputCommand()) return;
 
