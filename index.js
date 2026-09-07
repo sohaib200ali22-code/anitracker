@@ -1191,73 +1191,6 @@ const mediaList = data?.Page?.media;
             await interaction.editReply('Failed to display anime data.');
         }
     }
-            const title = (anime.title && (anime.title.english || anime.title.romaji)) || searchQuery;
-            const cleanDesc = anime.description ? anime.description.replace(/<[^>]*>?/gm, '').substring(0, 300) + '...' : 'No synopsis available.';
-
-            const embed = new EmbedBuilder()
-                .setTitle(title)
-                .setURL(anime.siteUrl || 'https://anilist.co')
-                .setThumbnail(anime.coverImage?.large || 'https://i.imgur.com/AGv4yDI.png')
-                .addFields(
-                    { name: 'Episodes', value: `${anime.episodes ?? 'N/A'}`, inline: true },
-                    { name: 'Status', value: anime.status || 'N/A', inline: true },
-                    { name: 'Score', value: anime.averageScore ? `${anime.averageScore} / 100` : 'N/A', inline: true }
-                )
-                .setDescription(cleanDesc)
-                .setColor('#FF5733');
-
-            const trackBtn = new ButtonBuilder()
-                .setCustomId(`track_btn_${anime.id}`)
-                .setLabel('🎯 Channel Track')
-                .setStyle(ButtonStyle.Success);
-
-            const favBtn = new ButtonBuilder()
-                .setCustomId(`fav_btn_${anime.id}`)
-                .setLabel('⭐ Favorite (DM Alert)')
-                .setStyle(ButtonStyle.Primary);
-
-            const buttons = [favBtn];
-            if (interaction.guildId) {
-                buttons.unshift(trackBtn);
-            }
-
-            const row = new ActionRowBuilder().addComponents(...buttons);
-            const components = anime.status === 'FINISHED' ? [] : [row];
-
-            await interaction.editReply({ 
-                embeds: [embed], 
-                components: components 
-            });
-        } catch (err) {
-            console.error('AniList Error, attempting Jikan fallback:', err.message);
-            
-            // 🆘 Fallback directly from catch block if AniList throws an exception (403/500)
-            try {
-                const jikanData = await getAnimeJikan(searchQuery);
-
-                if (jikanData) {
-                    const fallbackEmbed = new EmbedBuilder()
-                        .setTitle(jikanData.title)
-                        .setURL(jikanData.url || 'https://myanimelist.net')
-                        .setThumbnail(jikanData.image || 'https://i.imgur.com/AGv4yDI.png')
-                        .addFields(
-                            { name: 'Episodes', value: `${jikanData.episodes ?? 'N/A'}`, inline: true },
-                            { name: 'Status', value: jikanData.status || 'N/A', inline: true },
-                            { name: 'Score', value: jikanData.score ? `${jikanData.score} / 10` : 'N/A', inline: true }
-                        )
-                        .setDescription(jikanData.synopsis)
-                        .setFooter({ text: '⚠️ Source: MyAnimeList (AniList Emergency Backup)' })
-                        .setColor('#FF5733');
-
-                    return await interaction.editReply({ embeds: [fallbackEmbed], components: [] });
-                }
-            } catch (fallbackErr) {
-                console.error('Jikan Fallback Error:', fallbackErr);
-            }
-
-            await interaction.editReply('❌ Failed to fetch anime data from AniList and MyAnimeList.');
-        }
-    }
 else if (commandName === 'eval') {
         if (interaction.user.id !== '1326815636395003966') {
             return interaction.reply({ content: '❌ Dev only command!', flags: 64 });
@@ -1280,7 +1213,8 @@ else if (commandName === 'eval') {
             });
         }
     }
-    else if (commandName === 'eval') {
+   
+   else if (commandName === 'eval') {
         if (interaction.user.id !== '1326815636395003966') {
             return interaction.reply({ content: '❌ Dev only command!', flags: 64 });
         }
