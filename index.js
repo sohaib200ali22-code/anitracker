@@ -1068,7 +1068,7 @@ const mediaList = data?.Page?.media;
         await interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
     }
 
-    // 🔍 Anime Command
+   // 🔍 Anime Command
     else if (commandName === 'anime') {
         await interaction.deferReply();
         const searchQuery = interaction.options.getString('title');
@@ -1088,36 +1088,47 @@ const mediaList = data?.Page?.media;
           }
         }`;
 
-        try {
-            let data = await fetchAniList(gqlQuery, { search: searchQuery });
-            let anime = data?.Media;
+        let anime = null;
 
-            // 🆘 Fallback Logic (إذا AniList رجّع null من غير Error)
-            if (!anime) {
-                console.log('AniList returned null. Switching to Jikan Fallback...');
+        // 1. Try AniList First
+        try {
+            const data = await fetchAniList(gqlQuery, { search: searchQuery });
+            anime = data?.Media;
+        } catch (err) {
+            console.error('AniList Fetch Error:', err.message);
+        }
+
+        // 2. Fallback to Jikan if AniList failed or returned no data
+        if (!anime) {
+            console.log('AniList failed or returned no data. Fetching from Jikan Fallback...');
+            try {
                 const jikanData = await getAnimeJikan(searchQuery);
 
-                if (!jikanData) {
-                    return interaction.editReply('❌ Anime not found on AniList or MyAnimeList.');
+                if (jikanData) {
+                    const fallbackEmbed = new EmbedBuilder()
+                        .setTitle(jikanData.title)
+                        .setURL(jikanData.url || 'https://myanimelist.net')
+                        .setThumbnail(jikanData.image || 'https://i.imgur.com/AGv4yDI.png')
+                        .addFields(
+                            { name: 'Episodes', value: `${jikanData.episodes ?? 'N/A'}`, inline: true },
+                            { name: 'Status', value: jikanData.status || 'N/A', inline: true },
+                            { name: 'Score', value: jikanData.score ? `${jikanData.score} / 10` : 'N/A', inline: true }
+                        )
+                        .setDescription(jikanData.synopsis)
+                        .setFooter({ text: '⚠️ Source: MyAnimeList (AniList Emergency Backup)' })
+                        .setColor('#FF5733');
+
+                    return await interaction.editReply({ embeds: [fallbackEmbed], components: [] });
                 }
-
-                const fallbackEmbed = new EmbedBuilder()
-                    .setTitle(jikanData.title)
-                    .setURL(jikanData.url || 'https://myanimelist.net')
-                    .setThumbnail(jikanData.image || 'https://i.imgur.com/AGv4yDI.png')
-                    .addFields(
-                        { name: 'Episodes', value: `${jikanData.episodes ?? 'N/A'}`, inline: true },
-                        { name: 'Status', value: jikanData.status || 'N/A', inline: true },
-                        { name: 'Score', value: jikanData.score ? `${jikanData.score} / 10` : 'N/A', inline: true }
-                    )
-                    .setDescription(jikanData.synopsis)
-                    .setFooter({ text: '⚠️ Source: MyAnimeList (AniList Emergency Backup)' })
-                    .setColor('#FF5733');
-
-                return interaction.editReply({ embeds: [fallbackEmbed], components: [] });
+            } catch (fallbackErr) {
+                console.error('Jikan Fallback Error:', fallbackErr);
             }
 
-            // 🔒 Age Verification Check (AniList Data)
+            return await interaction.editReply('❌ Anime not found on AniList or MyAnimeList.');
+        }
+
+        // 3. Render AniList Data (If AniList succeeded)
+        try {
             if (anime.isAdult) {
                 let isVerified = false;
                 try {
@@ -1138,6 +1149,48 @@ const mediaList = data?.Page?.media;
                 }
             }
 
+            const title = (anime.title && (anime.title.english || anime.title.romaji)) || searchQuery;
+            const cleanDesc = anime.description ? anime.description.replace(/<[^>]*>?/gm, '').substring(0, 300) + '...' : 'No synopsis available.';
+
+            const embed = new EmbedBuilder()
+                .setTitle(title)
+                .setURL(anime.siteUrl || 'https://anilist.co')
+                .setThumbnail(anime.coverImage?.large || 'https://i.imgur.com/AGv4yDI.png')
+                .addFields(
+                    { name: 'Episodes', value: `${anime.episodes ?? 'N/A'}`, inline: true },
+                    { name: 'Status', value: anime.status || 'N/A', inline: true },
+                    { name: 'Score', value: anime.averageScore ? `${anime.averageScore} / 100` : 'N/A', inline: true }
+                )
+                .setDescription(cleanDesc)
+                .setColor('#FF5733');
+
+            const trackBtn = new ButtonBuilder()
+                .setCustomId(`track_btn_${anime.id}`)
+                .setLabel('🎯 Channel Track')
+                .setStyle(ButtonStyle.Success);
+
+            const favBtn = new ButtonBuilder()
+                .setCustomId(`fav_btn_${anime.id}`)
+                .setLabel('⭐ Favorite (DM Alert)')
+                .setStyle(ButtonStyle.Primary);
+
+            const buttons = [favBtn];
+            if (interaction.guildId) {
+                buttons.unshift(trackBtn);
+            }
+
+            const row = new ActionRowBuilder().addComponents(...buttons);
+            const components = anime.status === 'FINISHED' ? [] : [row];
+
+            await interaction.editReply({ 
+                embeds: [embed], 
+                components: components 
+            });
+        } catch (err) {
+            console.error('Anime Command Render Error:', err);
+            await interaction.editReply('Failed to display anime data.');
+        }
+    }
             const title = (anime.title && (anime.title.english || anime.title.romaji)) || searchQuery;
             const cleanDesc = anime.description ? anime.description.replace(/<[^>]*>?/gm, '').substring(0, 300) + '...' : 'No synopsis available.';
 
