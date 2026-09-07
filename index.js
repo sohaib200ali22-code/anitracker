@@ -121,17 +121,15 @@ function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// AniList API Direct Fetch
 async function fetchAniList(query, variables) {
     try {
-        const response = await axios.post('https://graphql.anilist.co', {
+        const response = await axios.post('https://anilistproxy.sohaib200ali22.workers.dev/', {
             query,
             variables
         }, {
             headers: {
                 'Content-Type': 'application/json',
-                'Accept': 'application/json',
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                'Accept': 'application/json'
             },
             timeout: 10000
         });
@@ -141,7 +139,7 @@ async function fetchAniList(query, variables) {
         }
         return null;
     } catch (error) {
-        console.error('AniList Fetch Error:', error.response ? error.response.status : error.message);
+        console.error('Worker Proxy Error:', error.response ? error.response.status : error.message);
         return null;
     }
 }
