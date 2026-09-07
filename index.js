@@ -691,7 +691,6 @@ if (interaction.isButton()) {
         await interaction.editReply({ embeds: [embed] });
     }
     return;
-}
     }
     if (!interaction.isChatInputCommand()) return;
 
