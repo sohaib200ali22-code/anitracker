@@ -156,7 +156,6 @@ function getAiredEpisodes(anime) {
     return anime.episodes || 0;
 }
 
-const axios = require('axios');
 
 // Helper لمنع تجاوز حد طلبات AniList
 function sleep(ms) {
