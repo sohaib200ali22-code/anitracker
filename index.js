@@ -156,6 +156,50 @@ function getAiredEpisodes(anime) {
     return anime.episodes || 0;
 }
 
+const axios = require('axios');
+
+// Helper لمنع تجاوز حد طلبات AniList
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// دالة جلب البيانات عبر الـ Worker
+async function fetchAniList(query, variables) {
+    try {
+        const response = await axios.post('https://anilistproxy.sohaib200ali22.workers.dev/', {
+            query,
+            variables
+        }, {
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            },
+            timeout: 10000
+        });
+
+        if (response.data && response.data.data) {
+            return response.data.data;
+        }
+        return null;
+    } catch (error) {
+        console.error('Worker Proxy Error:', error.response ? error.response.status : error.message);
+        return null;
+    }
+}
+
+// Helper لمعرفة عدد الحلقات المعروضة بالفعل
+function getAiredEpisodes(anime) {
+    if (anime.status === 'RELEASING' && anime.nextAiringEpisode?.episode) {
+        return anime.nextAiringEpisode.episode - 1;
+    }
+    return anime.episodes || 0;
+}
+
+module.exports = {
+    fetchAniList,
+    sleep,
+    getAiredEpisodes
+};
 // Register Slash Commands
 const commands = [
     new SlashCommandBuilder()
