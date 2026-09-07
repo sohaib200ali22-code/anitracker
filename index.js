@@ -121,51 +121,15 @@ function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-async function fetchAniList(query, variables) {
-    try {
-        const response = await axios.post('https://anilistproxy.sohaib200ali22.workers.dev/', {
-            query,
-            variables
-        }, {
-            headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json'
-            },
-            timeout: 10000
-        });
-
-        if (response.data && response.data.data) {
-            return response.data.data;
-        }
-        return null;
-    } catch (error) {
-        console.error('Worker Proxy Error:', error.response ? error.response.status : error.message);
-        return null;
-    }
-}
-// FIX: AniList's `episodes` field is the total (planned) episode count, not
-// "how many episodes have aired so far". For currently-airing anime this
-// barely ever changes, so the old code (comparing raw `episodes`) almost
-// never detected a new episode. This helper derives the actual aired count
-// using `nextAiringEpisode` while a show is releasing, falling back to the
-// total once it has finished.
-function getAiredEpisodes(anime) {
-    if (anime.status === 'RELEASING' && anime.nextAiringEpisode?.episode) {
-        return anime.nextAiringEpisode.episode - 1;
-    }
-    return anime.episodes || 0;
-}
-
-
 // Helper لمنع تجاوز حد طلبات AniList
 function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// دالة جلب البيانات عبر الـ Worker
+// دالة جلب البيانات عبر Vercel Proxy
 async function fetchAniList(query, variables) {
     try {
-        const response = await axios.post('https://anilistproxy.sohaib200ali22.workers.dev/', {
+        const response = await axios.post('https://anilist-proxy-lemon.vercel.app/api/proxy', {
             query,
             variables
         }, {
@@ -181,7 +145,7 @@ async function fetchAniList(query, variables) {
         }
         return null;
     } catch (error) {
-        console.error('Worker Proxy Error:', error.response ? error.response.status : error.message);
+        console.error('Proxy Fetch Error:', error.response ? error.response.status : error.message);
         return null;
     }
 }
