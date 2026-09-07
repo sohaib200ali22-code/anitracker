@@ -1112,13 +1112,18 @@ const mediaList = data?.Page?.media;
                         .addFields(
                             { name: 'Episodes', value: `${jikanData.episodes ?? 'N/A'}`, inline: true },
                             { name: 'Status', value: jikanData.status || 'N/A', inline: true },
-                            { name: 'Score', value: jikanData.score ? `${jikanData.score} / 10` : 'N/A', inline: true }
+                            { name: 'Score', value: jikanData.score || 'N/A', inline: true }
                         )
                         .setDescription(jikanData.synopsis)
                         .setFooter({ text: '⚠️ Source: MyAnimeList (AniList Emergency Backup)' })
                         .setColor('#FF5733');
 
-                    return await interaction.editReply({ embeds: [fallbackEmbed], components: [] });
+                    await interaction.editReply({ embeds: [fallbackEmbed], components: [] });
+
+await interaction.followUp({
+    content: '🚨 **[Dev Alert]:** AniList was unreachable. This response was fetched via the Emergency Backup (Kitsu)!',
+    ephemeral: true
+});
                 }
             } catch (fallbackErr) {
                 console.error('Jikan Fallback Error:', fallbackErr);
