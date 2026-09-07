@@ -1,31 +1,26 @@
-const axios = require('axios');
-
-// Create an Axios instance with custom User-Agent to prevent Jikan/Cloudflare blocks
-const jikanClient = axios.create({
-    headers: {
-        'User-Agent': 'AniTrackerDiscordBot/1.0 (https://github.com)'
-    },
-    timeout: 8000
-});
+// Backup Fallback System using Kitsu API
 
 // 1. Search Anime
 async function getAnimeJikan(title) {
     try {
-        const res = await jikanClient.get(`https://api.jikan.moe/v4/anime?q=${encodeURIComponent(title)}&limit=1`);
-        const anime = res.data?.data?.[0];
+        const res = await fetch(`https://kitsu.io/api/edge/anime?filter[text]=${encodeURIComponent(title)}&page[limit]=1`);
+        if (!res.ok) return null;
+        
+        const data = await res.json();
+        const anime = data?.data?.[0]?.attributes;
         if (!anime) return null;
 
         return {
-            title: anime.title_english || anime.title,
-            episodes: anime.episodes || 'N/A',
-            status: anime.status || 'N/A',
-            score: anime.score || 'N/A',
-            image: anime.images?.jpg?.large_image_url || anime.images?.jpg?.image_url,
-            url: anime.url,
+            title: anime.canonicalTitle || anime.en || anime.en_jp,
+            episodes: anime.episodeCount || 'N/A',
+            status: anime.status ? anime.status.toUpperCase() : 'N/A',
+            score: anime.averageRating ? `${(parseFloat(anime.averageRating) / 10).toFixed(1)} / 10` : 'N/A',
+            image: anime.posterImage?.large || anime.posterImage?.original,
+            url: `https://kitsu.io/anime/${data.data[0].id}`,
             synopsis: anime.synopsis ? anime.synopsis.slice(0, 300) + '...' : 'No description available.'
         };
     } catch (e) {
-        console.error('Jikan Anime Fetch Error:', e.response?.status || e.message);
+        console.error('Kitsu Anime Fetch Error:', e.message);
         return null;
     }
 }
@@ -33,21 +28,24 @@ async function getAnimeJikan(title) {
 // 2. Search Manga
 async function getMangaJikan(title) {
     try {
-        const res = await jikanClient.get(`https://api.jikan.moe/v4/manga?q=${encodeURIComponent(title)}&limit=1`);
-        const manga = res.data?.data?.[0];
+        const res = await fetch(`https://kitsu.io/api/edge/manga?filter[text]=${encodeURIComponent(title)}&page[limit]=1`);
+        if (!res.ok) return null;
+        
+        const data = await res.json();
+        const manga = data?.data?.[0]?.attributes;
         if (!manga) return null;
 
         return {
-            title: manga.title_english || manga.title,
-            chapters: manga.chapters || 'N/A',
-            status: manga.status || 'N/A',
-            score: manga.score || 'N/A',
-            image: manga.images?.jpg?.large_image_url || manga.images?.jpg?.image_url,
-            url: manga.url,
+            title: manga.canonicalTitle || manga.en || manga.en_jp,
+            chapters: manga.chapterCount || 'N/A',
+            status: manga.status ? manga.status.toUpperCase() : 'N/A',
+            score: manga.averageRating ? `${(parseFloat(manga.averageRating) / 10).toFixed(1)} / 10` : 'N/A',
+            image: manga.posterImage?.large || manga.posterImage?.original,
+            url: `https://kitsu.io/manga/${data.data[0].id}`,
             synopsis: manga.synopsis ? manga.synopsis.slice(0, 300) + '...' : 'No description available.'
         };
     } catch (e) {
-        console.error('Jikan Manga Fetch Error:', e.response?.status || e.message);
+        console.error('Kitsu Manga Fetch Error:', e.message);
         return null;
     }
 }
@@ -55,55 +53,21 @@ async function getMangaJikan(title) {
 // 3. Search Character
 async function getCharacterJikan(name) {
     try {
-        const res = await jikanClient.get(`https://api.jikan.moe/v4/characters?q=${encodeURIComponent(name)}&limit=1`);
-        const char = res.data?.data?.[0];
+        const res = await fetch(`https://kitsu.io/api/edge/characters?filter[name]=${encodeURIComponent(name)}&page[limit]=1`);
+        if (!res.ok) return null;
+
+        const data = await res.json();
+        const char = data?.data?.[0]?.attributes;
         if (!char) return null;
 
         return {
-            name: char.name,
-            image: char.images?.jpg?.image_url,
-            about: char.about ? char.about.slice(0, 300) + '...' : 'No biography available.',
-            url: char.url
+            name: char.canonicalName || char.name,
+            image: char.image?.original,
+            about: char.description ? char.description.replace(/<[^>]*>?/gm, '').slice(0, 300) + '...' : 'No biography available.',
+            url: `https://kitsu.io/characters/${data.data[0].id}`
         };
     } catch (e) {
-        console.error('Jikan Character Fetch Error:', e.response?.status || e.message);
-        return null;
-    }
-}
-
-// 4. Get Schedule (Airing Today / Specified Day)
-async function getScheduleJikan(day) {
-    try {
-        const res = await jikanClient.get(`https://api.jikan.moe/v4/schedules?filter=${day.toLowerCase()}`);
-        const list = res.data?.data || [];
-        return list.slice(0, 10).map(a => ({
-            title: a.title_english || a.title,
-            episodes: a.episodes || 'N/A',
-            time: a.broadcast?.time || 'N/A'
-        }));
-    } catch (e) {
-        console.error('Jikan Schedule Fetch Error:', e.response?.status || e.message);
-        return null;
-    }
-}
-
-// 5. Get Anime by Genre
-async function getGenreJikan(genreName) {
-    try {
-        const genresRes = await jikanClient.get('https://api.jikan.moe/v4/genres/anime');
-        const genres = genresRes.data?.data || [];
-        const matchedGenre = genres.find(g => g.name.toLowerCase() === genreName.toLowerCase());
-
-        if (!matchedGenre) return null;
-
-        const res = await jikanClient.get(`https://api.jikan.moe/v4/anime?genres=${matchedGenre.mal_id}&limit=5`);
-        return res.data?.data?.map(a => ({
-            title: a.title_english || a.title,
-            score: a.score || 'N/A',
-            url: a.url
-        })) || null;
-    } catch (e) {
-        console.error('Jikan Genre Fetch Error:', e.response?.status || e.message);
+        console.error('Kitsu Character Fetch Error:', e.message);
         return null;
     }
 }
@@ -111,7 +75,5 @@ async function getGenreJikan(genreName) {
 module.exports = {
     getAnimeJikan,
     getMangaJikan,
-    getCharacterJikan,
-    getScheduleJikan,
-    getGenreJikan
+    getCharacterJikan
 };
