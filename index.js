@@ -121,19 +121,29 @@ function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// AniList API GraphQL Helper Function via Cloudflare Worker
+// AniList API Direct Fetch
 async function fetchAniList(query, variables) {
-    const response = await axios.post('https://anilistproxy.sohaib200ali22.workers.dev/', {
-        query,
-        variables
-    }, {
-        headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-        },
-        timeout: 10000
-    });
-    return response.data.data;
+    try {
+        const response = await axios.post('https://graphql.anilist.co', {
+            query,
+            variables
+        }, {
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            },
+            timeout: 10000
+        });
+
+        if (response.data && response.data.data) {
+            return response.data.data;
+        }
+        return null;
+    } catch (error) {
+        console.error('AniList Fetch Error:', error.response ? error.response.status : error.message);
+        return null;
+    }
 }
 // FIX: AniList's `episodes` field is the total (planned) episode count, not
 // "how many episodes have aired so far". For currently-airing anime this
