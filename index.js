@@ -305,7 +305,9 @@ client.once('ready', async () => {
     } catch (error) {
         console.error('Error registering commands:', error);
     }
-
+async function checkUpdates() {
+    console.log('Checking for updates...');
+}
     // Background Tracker Loop (Checks every 30 minutes)
     setInterval(checkUpdates, 30 * 60 * 1000);
 });
