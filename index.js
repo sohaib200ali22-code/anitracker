@@ -2055,7 +2055,7 @@ async function checkUpdates() {
         console.error('Error in checkUpdates main loop:', err);
    }
 
-});
+}
 
 // Log in to Discord
 client.login(process.env.DISCORD_TOKEN);
