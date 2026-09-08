@@ -2056,6 +2056,6 @@ async function checkUpdates() {
    }
 
 }
-
+});
 // Log in to Discord
 client.login(process.env.DISCORD_TOKEN);
