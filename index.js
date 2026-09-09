@@ -314,7 +314,7 @@ const commands = [
                 { name: 'Watching', value: '3' },
                 { name: 'Competing', value: '5' }
             )
-    )
+    ),
     new SlashCommandBuilder()
         .setName('verifyage')
         .setDescription('(Owner only) Approve a user for 18+ genre recommendations')
