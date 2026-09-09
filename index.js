@@ -272,7 +272,7 @@ const commands = [
      new SlashCommandBuilder()
         .setName('maintenance-dm')
         .setDescription('(Dev only) send a dm msg to all servers and users')
-        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .addStringOption(option =>
         option.setName('message')
             .setDescription('Type the message you want to send')
