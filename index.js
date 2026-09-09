@@ -28,11 +28,12 @@ const TrackedItem = mongoose.model('TrackedItem', TrackSchema);
 
 // MongoDB Schema for Personal Favorites (DM Alerts)
 const FavoriteSchema = new mongoose.Schema({
-    userId: String,
-    animeId: Number,
-    animeTitle: String,
-    lastEpisodes: Number
-});
+    userId: { type: String, required: true },
+    animeId: { type: String, required: true }, // خليناها String عشان تقبل Kitsu و AniList
+    animeTitle: { type: String, required: true },
+    lastEpisodes: { type: Number, default: 0 } // لو مفيش حلقات نحط 0 افتراضي
+}, { timestamps: true }); // دي بتضيف createdAt و updatedAt أوتوماتيك
+
 const FavoriteItem = mongoose.model('FavoriteItem', FavoriteSchema);
 
 // Manual age verification for the 18+ recommendation categories.
@@ -485,7 +486,7 @@ if (interaction.isStringSelectMenu()) {
                 components.push(new ActionRowBuilder().addComponents(...buttons));
             }
 
-            await interaction.editReply({ content: '', embeds: [embed], components });
+            await interaction.update({ content: '', embeds: [embed], components });
         } catch (err) {
             console.error('genre recommendation error:', err);
             await interaction.editReply({
@@ -498,6 +499,7 @@ if (interaction.isStringSelectMenu()) {
 }
 
 if (interaction.isButton()) {
+    // 🎯 Channel Track Button
     if (interaction.customId.startsWith('track_btn_')) {
         if (!interaction.guildId) {
             return interaction.reply({
@@ -507,105 +509,85 @@ if (interaction.isButton()) {
         }
 
         await interaction.deferReply({ ephemeral: true });
-        const animeId = parseInt(interaction.customId.replace('track_btn_', ''));
+        
+        // استخدام String عشان يقبل ID سواء من AniList أو Kitsu
+        const animeId = interaction.customId.replace('track_btn_', '');
 
-        const gqlQuery = `
-        query ($id: Int) {
-          Media (id: $id, type: ANIME) {
-            id
-            title { romaji english }
-            episodes
-            status
-            siteUrl
-          }
-        }`;
-
-        let anime = null;
-        try {
-            const data = await fetchAniList(gqlQuery, { id: animeId });
-            anime = data?.Media;
-        } catch (err) {
-            console.error('Track Button AniList Error:', err.message);
+        // قراءة البيانات من الرسالة (Embed) المعروضة
+        const embed = interaction.message.embeds[0];
+        if (!embed) {
+            return await interaction.editReply({ content: '❌ Could not read anime data from the message.' });
         }
 
-        if (!anime) {
-            const DEV_ID = '1326815636395003966';
-            if (interaction.user.id === DEV_ID) {
-                await interaction.followUp({
-                    content: '🚨 **[Dev Alert]:** AniList unreachable during track operation.',
-                    ephemeral: true
-                });
-            }
-            return await interaction.editReply({ content: '❌ Could not connect to primary services to track this anime. Please try again in a moment.' });
-        }
+        const rawTitle = embed.title || 'Unknown Anime';
+        const animeTitle = rawTitle.includes(':') ? rawTitle.split(':').slice(1).join(':').trim() : rawTitle;
+        const siteUrl = embed.url || 'https://anilist.co';
 
-        const animeTitle = (anime.title && (anime.title.english || anime.title.romaji)) || 'Unknown Anime';
-        const existing = await TrackedItem.findOne({ guildId: interaction.guildId, animeId: anime.id });
+        const epsField = embed.fields?.find(f => f.name === 'Episodes' || f.name === 'Chapters');
+        const lastEpisodes = epsField && !isNaN(parseInt(epsField.value)) ? parseInt(epsField.value) : 0;
+
+        const statusField = embed.fields?.find(f => f.name === 'Status');
+        const lastStatus = statusField ? statusField.value : 'UNKNOWN';
+
+        // فحص الداتا بيز عشان نمنع التكرار
+        const existing = await TrackedItem.findOne({ guildId: interaction.guildId, animeId: animeId });
 
         if (existing) {
             return await interaction.editReply({ content: `**${animeTitle}** is already tracked in this server!` });
         }
 
+        // الحفظ في الداتا بيز
         await TrackedItem.create({
             guildId: interaction.guildId,
             channelId: interaction.channelId,
-            animeId: anime.id,
+            animeId: animeId,
             animeTitle: animeTitle,
-            lastEpisodes: anime.episodes || 0,
-            lastStatus: anime.status || 'UNKNOWN'
+            lastEpisodes: lastEpisodes,
+            lastStatus: lastStatus
         });
 
-        await interaction.editReply({ content: `🎯 Successfully started tracking **[${animeTitle}](${anime.siteUrl})** in this channel!` });
+        await interaction.editReply({ content: `🎯 Successfully started tracking **[${animeTitle}](${siteUrl})** in this channel!` });
     }
+    
+    // ⭐ Favorite Button
     else if (interaction.customId.startsWith('fav_btn_')) {
         await interaction.deferReply({ ephemeral: true });
-        const animeId = parseInt(interaction.customId.replace('fav_btn_', ''));
+        
+        // استخدام String عشان يقبل ID سواء من AniList أو Kitsu
+        const animeId = interaction.customId.replace('fav_btn_', ''); 
 
-        const gqlQuery = `
-        query ($id: Int) {
-          Media (id: $id, type: ANIME) {
-            id
-            title { romaji english }
-            episodes
-            siteUrl
-          }
-        }`;
-
-        let anime = null;
-        try {
-            const data = await fetchAniList(gqlQuery, { id: animeId });
-            anime = data?.Media;
-        } catch (err) {
-            console.error('Fav Button AniList Error:', err.message);
+        // قراءة البيانات من الرسالة (Embed) المعروضة
+        const embed = interaction.message.embeds[0];
+        
+        if (!embed) {
+            return await interaction.editReply({ content: '❌ Could not read anime data from the message.' });
         }
 
-        if (!anime) {
-            const DEV_ID = '1326815636395003966';
-            if (interaction.user.id === DEV_ID) {
-                await interaction.followUp({
-                    content: '🚨 **[Dev Alert]:** AniList unreachable during favorite operation.',
-                    ephemeral: true
-                });
-            }
-            return await interaction.editReply({ content: '❌ Could not connect to primary services to save favorite. Please try again in a moment.' });
-        }
+        const rawTitle = embed.title || 'Unknown Anime';
+        const animeTitle = rawTitle.includes(':') ? rawTitle.split(':').slice(1).join(':').trim() : rawTitle;
+        const siteUrl = embed.url || 'https://anilist.co';
 
-        const animeTitle = (anime.title && (anime.title.english || anime.title.romaji)) || 'Unknown Anime';
-        const existing = await FavoriteItem.findOne({ userId: interaction.user.id, animeId: anime.id });
+        const epsField = embed.fields?.find(f => f.name === 'Episodes' || f.name === 'Chapters');
+        const lastEpisodes = epsField && !isNaN(parseInt(epsField.value)) ? parseInt(epsField.value) : 0;
+
+        // فحص الداتا بيز عشان نمنع التكرار
+        const existing = await FavoriteItem.findOne({ userId: interaction.user.id, animeId: animeId });
 
         if (existing) {
             return await interaction.editReply({ content: `⭐ **${animeTitle}** is already in your personal favorites!` });
         }
 
+        // الحفظ في الداتا بيز
         await FavoriteItem.create({
             userId: interaction.user.id,
-            animeId: anime.id,
+            animeId: animeId,
             animeTitle: animeTitle,
-            lastEpisodes: anime.episodes || 0
+            lastEpisodes: lastEpisodes
         });
 
-        await interaction.editReply({ content: `⭐ Added **[${animeTitle}](${anime.siteUrl})** to your personal favorites! You will receive direct messages (DMs) when new episodes arrive.` });
+        await interaction.editReply({ content: `⭐ Added **[${animeTitle}](${siteUrl})** to your personal favorites! You will receive direct messages (DMs) when new episodes arrive.` });
     }
+}
     else if (interaction.customId.startsWith('char_info_')) {
         await interaction.deferReply({ ephemeral: true });
         const charId = parseInt(interaction.customId.replace('char_info_', ''));
