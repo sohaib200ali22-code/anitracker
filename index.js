@@ -285,7 +285,7 @@ const commands = [
         option.setName('guild_id')
             .setDescription('The ID of the server')
             .setRequired(true)
-    )
+    ),
     new SlashCommandBuilder()
         .setName('eval')
         .setDescription('(Owner only) Evaluate JavaScript code')
