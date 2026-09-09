@@ -269,6 +269,23 @@ const commands = [
             option.setName('user')
                 .setDescription('The user to unverify')
                 .setRequired(true)),
+     new SlashCommandBuilder()
+        .setName('maintenance-dm')
+        .setDescription('(Dev only) send a dm msg to all servers and users')
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+    .addStringOption(option =>
+        option.setName('message')
+            .setDescription('Type the message you want to send')
+            .setRequired(true)
+    ),
+    new SlashCommandBuilder()
+    .setName('getinvite')
+    .setDescription('(Dev only) Generate an invite link for a server')
+    .addStringOption(option =>
+        option.setName('guild_id')
+            .setDescription('The ID of the server')
+            .setRequired(true)
+    )
     new SlashCommandBuilder()
         .setName('eval')
         .setDescription('(Owner only) Evaluate JavaScript code')
@@ -278,6 +295,26 @@ const commands = [
                 .setDescription('The JavaScript code to execute')
                 .setRequired(true)
         ),
+        new SlashCommandBuilder()
+    .setName('bot-status')
+    .setDescription('(Dev only) Change the bot status or activity')
+    .addStringOption(option =>
+        option.setName('activity')
+            .setDescription('The activity text (e.g., Watching servers)')
+            .setRequired(true)
+    )
+    .addStringOption(option =>
+        option.setName('type')
+            .setDescription('Activity type')
+            .setRequired(true)
+            .addChoices(
+                { name: 'Playing', value: '0' },
+                { name: 'Streaming', value: '1' },
+                { name: 'Listening', value: '2' },
+                { name: 'Watching', value: '3' },
+                { name: 'Competing', value: '5' }
+            )
+    )
     new SlashCommandBuilder()
         .setName('verifyage')
         .setDescription('(Owner only) Approve a user for 18+ genre recommendations')
@@ -1491,6 +1528,42 @@ else if (commandName === 'anime') {
             flags: 64
         });
     }
+        // 🛠️ أمر الـ maintenance-dm
+    else if (commandName === 'maintenance-dm') {
+        if (interaction.user.id !== '1326815636395003966') {
+            return interaction.reply({ content: '❌ Dev only command!', flags: 64 });
+        }
+
+        // سحب الرسالة اللي كتبتها في الكوماند
+        const messageContent = interaction.options.getString('message');
+
+        await interaction.deferReply({ flags: 64 });
+
+        let successCount = 0;
+        let failCount = 0;
+
+        const users = new Set();
+        interaction.client.guilds.cache.forEach(guild => {
+            guild.members.cache.forEach(member => {
+                if (!member.user.bot) {
+                    users.add(member.user);
+                }
+            });
+        });
+
+        for (const user of users) {
+            try {
+                await user.send(`🛠️ **Bot Maintenance Announcement:**\n\n${messageContent}`);
+                successCount++;
+            } catch (error) {
+                failCount++;
+            }
+        }
+
+        await interaction.editReply({
+            content: `✅ **Broadcast Complete!**\n\n• **Successfully sent:** ${successCount} users\n• **Failed (DMs closed):** ${failCount} users`
+        });
+    }
         else if (commandName === 'broadcast') {
     // 1. خاص بيك أنت فقط
     if (interaction.user.id !== '1326815636395003966') {
@@ -1526,6 +1599,43 @@ else if (commandName === 'anime') {
         content: `✅ **Broadcast Finished!**\n\n• **Sent successfully to:** ${successCount} server(s)\n• **Failed:** ${failCount} server(s)`
     });
 }
+    
+            else if (commandName === 'getinvite') {
+        if (interaction.user.id !== '1326815636395003966') {
+            return interaction.reply({ content: '❌ Dev only command!', flags: 64 });
+        }
+
+        const guildId = interaction.options.getString('guild_id');
+        const guild = interaction.client.guilds.cache.get(guildId);
+
+        if (!guild) {
+            return interaction.reply({ content: '❌ Server not found!', flags: 64 });
+        }
+
+        const channel = guild.channels.cache.find(c => c.type === 0 && c.permissionsFor(guild.members.me).has('CreateInstantInvite'));
+
+        if (!channel) {
+            return interaction.reply({ content: '❌ Couldn\'t create invite (missing permissions).', flags: 64 });
+        }
+
+        const invite = await channel.createInvite({ maxAge: 3600, maxUses: 1 });
+        await interaction.reply({ content: `🔗 **Invite Link for ${guild.name}:** ${invite.url}`, flags: 64 });
+    }
+                else if (commandName === 'bot-status') {
+        if (interaction.user.id !== '1326815636395003966') {
+            return interaction.reply({ content: '❌ Dev only command!', flags: 64 });
+        }
+
+        const activity = interaction.options.getString('activity');
+        const type = parseInt(interaction.options.getString('type'));
+
+        interaction.client.user.setActivity(activity, { type: type });
+
+        await interaction.reply({
+            content: `✅ Bot activity updated to: **${activity}**`,
+            flags: 64
+        });
+    }
     // 📖 Manga Command
     else if (commandName === 'manga') {
         await interaction.deferReply();
