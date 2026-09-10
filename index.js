@@ -2192,7 +2192,7 @@ else if (commandName === 'mytracked') {
         await interaction.editReply('Failed to fetch tracked list.');
     }
 }
-   / 🧪 Test Alert Command (Dev Only)
+   // 🧪 Test Alert Command (Dev Only)
 else if (commandName === 'testalert') {
     const DEV_ID = process.env.DEV_USER_ID || '1326815636395003966';
 
