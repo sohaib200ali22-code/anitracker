@@ -735,9 +735,11 @@ if (interaction.isButton()) {
 
     const { commandName } = interaction;
 
-    // 🚀 Start Command
-if (commandName === 'start') {
-    // 1️⃣ حجز الرد لمنع أي Timeout وتحديد إنه مخفي (Ephemeral)
+    // -------------------------------------------------------------
+// 🚀 Start Command
+// -------------------------------------------------------------
+else if (commandName === 'start') {
+    // 1️⃣ حجز الرد لمنع الـ Timeout وتحديد إنه مخفي (Ephemeral)
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     const embed = new EmbedBuilder()
@@ -761,7 +763,7 @@ if (commandName === 'start') {
         .setThumbnail(client.user.displayAvatarURL())
         .setFooter({ text: 'AniTracker • Developed for Anime Lovers' });
 
-    // 2️⃣ أزرار إضافية (الدعم الفني + إضافة البوت)
+    // 2️⃣ الأزرار (سيرفر الدعم + إضافة البوت + دليل المستخدم)
     const supportBtn = new ButtonBuilder()
         .setLabel('💬 Support Server')
         .setStyle(ButtonStyle.Link)
@@ -772,22 +774,26 @@ if (commandName === 'start') {
         .setStyle(ButtonStyle.Link)
         .setURL(`https://discord.com/oauth2/authorize?client_id=${client.user.id}&scope=bot%20applications.commands&permissions=8`);
 
-    const row = new ActionRowBuilder().addComponents(supportBtn, inviteBtn);
+    const guideBtn = new ButtonBuilder()
+        .setLabel('📖 User Guide')
+        .setStyle(ButtonStyle.Link)
+        .setURL('https://discord.gg/H4Af2y4RD8');
 
-    // لو الأمر شغال في الخاص أصلاً (Direct Messages)
+    const row = new ActionRowBuilder().addComponents(supportBtn, inviteBtn, guideBtn);
+
+    // لو الأمر شغال في الخاص مباشرة (DMs)
     if (!interaction.guildId) {
         return interaction.editReply({ embeds: [embed], components: [row] });
     }
 
-    // 3️⃣ محاولة الإرسال في الخاص مع معالجة حظر الـ DMs
+    // 3️⃣ محاولة إرسال الدليل في الخاص للمستخدم
     try {
         await interaction.user.send({ embeds: [embed], components: [row] });
-        
         await interaction.editReply({
             content: '📥 Check your Direct Messages! I sent you the getting started guide.'
         });
     } catch (error) {
-        // التحقق مما إذا كان الخطأ بسبب إغلاق الـ DM (Error 50007)
+        // لو المستخدم قافل الـ DMs
         if (error.code === 50007) {
             await interaction.editReply({
                 content: '⚠️ Couldn\'t send you a DM! Please open your Direct Messages in privacy settings.',
@@ -804,7 +810,6 @@ if (commandName === 'start') {
         }
     }
 }
-
    // 🔞 Owner-controlled age verification (Approve)
 else if (commandName === 'verifyage') {
     const DEV_ID = process.env.DEV_USER_ID || '1326815636395003966';
