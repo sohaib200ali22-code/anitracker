@@ -738,7 +738,7 @@ if (interaction.isButton()) {
     // -------------------------------------------------------------
 // 🚀 Start Command
 // -------------------------------------------------------------
-else if (commandName === 'start') {
+if (commandName === 'start') {
     // 1️⃣ حجز الرد لمنع الـ Timeout وتحديد إنه مخفي (Ephemeral)
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
