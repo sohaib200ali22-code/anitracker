@@ -736,45 +736,74 @@ if (interaction.isButton()) {
     const { commandName } = interaction;
 
     // 🚀 Start Command
-    if (commandName === 'start') {
-        const embed = new EmbedBuilder()
-            .setTitle('🚀 Welcome to AniTracker!')
-            .setDescription('Your ultimate Discord companion for anime search, recommendations, and automatic episode notifications!')
-            .addFields(
-                { name: '✨ What can AniTracker do?', value: '• Search Anime & Manga details instantly.\n• Track anime in server channels for group alerts.\n• Add anime to personal favorites for **Direct Message (DM)** updates.\n• Find random high-rated anime by category/genre.' },
-                { name: '📚 Quick Start Commands', value: '`/anime` - Search any anime\n`/manga` - Search any manga\n`/genre` - Choose Anime/Manga, then a category\n`/track` - Track anime in a server channel\n`/favorite <title>` - Receive personal DM updates\n`/help` - Show full commands list' },
-                { name: '🐛 Report a Problem or Request Features', value: 'If you encounter any bugs, issues, or have suggestions, please visit the support server for more help.' }
-            )
-            .setColor('#2ecc71')
-            .setThumbnail(client.user.displayAvatarURL())
-            .setFooter({ text: 'AniTracker • Developed for Anime Lovers' });
+if (commandName === 'start') {
+    // 1️⃣ حجز الرد لمنع أي Timeout وتحديد إنه مخفي (Ephemeral)
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-        const supportBtn = new ButtonBuilder()
-            .setLabel('💬 Support Server')
-            .setStyle(ButtonStyle.Link)
-            .setURL('https://discord.gg/H4Af2y4RD8');
+    const embed = new EmbedBuilder()
+        .setTitle('🚀 Welcome to AniTracker!')
+        .setDescription('Your ultimate Discord companion for anime search, recommendations, and automatic episode notifications!')
+        .addFields(
+            { 
+                name: '✨ What can AniTracker do?', 
+                value: '• Search Anime & Manga details instantly.\n• Track anime in server channels for group alerts.\n• Add anime to personal favorites for **Direct Message (DM)** updates.\n• Find random high-rated anime by category/genre.' 
+            },
+            { 
+                name: '📚 Quick Start Commands', 
+                value: '`/anime` - Search any anime\n`/manga` - Search any manga\n`/genre` - Choose Anime/Manga, then a category\n`/track` - Track anime in a server channel\n`/favorite` - Receive personal DM updates\n`/help` - Show full commands list' 
+            },
+            { 
+                name: '🐛 Report a Problem or Request Features', 
+                value: 'If you encounter any bugs, issues, or have suggestions, please visit the support server for more help.' 
+            }
+        )
+        .setColor('#2ecc71')
+        .setThumbnail(client.user.displayAvatarURL())
+        .setFooter({ text: 'AniTracker • Developed for Anime Lovers' });
 
-        const row = new ActionRowBuilder().addComponents(supportBtn);
+    // 2️⃣ أزرار إضافية (الدعم الفني + إضافة البوت)
+    const supportBtn = new ButtonBuilder()
+        .setLabel('💬 Support Server')
+        .setStyle(ButtonStyle.Link)
+        .setURL('https://discord.gg/H4Af2y4RD8');
 
-        if (!interaction.guildId) {
-            return interaction.reply({ embeds: [embed], components: [row] });
-        }
+    const inviteBtn = new ButtonBuilder()
+        .setLabel('➕ Add to Server')
+        .setStyle(ButtonStyle.Link)
+        .setURL(`https://discord.com/oauth2/authorize?client_id=${client.user.id}&scope=bot%20applications.commands&permissions=8`);
 
-        try {
-            await interaction.user.send({ embeds: [embed], components: [row] });
-            await interaction.reply({
-                content: '📥 Check your Direct Messages! I sent you the getting started guide.',
-                ephemeral: true
-            });
-        } catch (error) {
-            await interaction.reply({
+    const row = new ActionRowBuilder().addComponents(supportBtn, inviteBtn);
+
+    // لو الأمر شغال في الخاص أصلاً (Direct Messages)
+    if (!interaction.guildId) {
+        return interaction.editReply({ embeds: [embed], components: [row] });
+    }
+
+    // 3️⃣ محاولة الإرسال في الخاص مع معالجة حظر الـ DMs
+    try {
+        await interaction.user.send({ embeds: [embed], components: [row] });
+        
+        await interaction.editReply({
+            content: '📥 Check your Direct Messages! I sent you the getting started guide.'
+        });
+    } catch (error) {
+        // التحقق مما إذا كان الخطأ بسبب إغلاق الـ DM (Error 50007)
+        if (error.code === 50007) {
+            await interaction.editReply({
                 content: '⚠️ Couldn\'t send you a DM! Please open your Direct Messages in privacy settings.',
                 embeds: [embed],
-                components: [row],
-                ephemeral: true
+                components: [row]
+            });
+        } else {
+            console.error('Failed to send start DM:', error);
+            await interaction.editReply({
+                content: '❌ An error occurred while executing this command.',
+                embeds: [embed],
+                components: [row]
             });
         }
     }
+}
 
    // 🔞 Owner-controlled age verification (Approve)
 else if (commandName === 'verifyage') {
@@ -882,17 +911,19 @@ else if (commandName === 'unverifyage') {
         });
     }
 }
-   // 📅 Today's Anime Schedule Command (With Kitsu Fallback)
+   // 📅 Today's Anime Schedule Command
 else if (commandName === 'schedule') {
     await interaction.deferReply();
 
     try {
-        const startOfDay = Math.floor(new Date().setHours(0, 0, 0, 0) / 1000);
-        const endOfDay = Math.floor(new Date().setHours(23, 59, 59, 999) / 1000);
+        // 1️⃣ حساب بداية ونهاية اليوم بتوقيت UTC
+        const now = new Date();
+        const startOfDay = Math.floor(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0) / 1000);
+        const endOfDay = Math.floor(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 23, 59, 59) / 1000);
 
         const gqlQuery = `
         query ($start: Int, $end: Int) {
-          Page(perPage: 25) {
+          Page(perPage: 50) {
             airingSchedules(airingAt_greater: $start, airingAt_lesser: $end, sort: TIME) {
               episode
               airingAt
@@ -904,54 +935,67 @@ else if (commandName === 'schedule') {
         }`;
 
         let schedules = [];
+        let sourceName = 'AniList';
 
-        // 1. Primary Attempt: AniList API
+        // 2️⃣ المحاولة الأولى: AniList API
         try {
             const data = await fetchAniList(gqlQuery, { start: startOfDay, end: endOfDay });
-            schedules = data?.Page?.airingSchedules || [];
+            schedules = (data?.Page?.airingSchedules || []).map(item => ({
+                episode: item.episode,
+                airingAt: item.airingAt,
+                title: item.media?.title?.english || item.media?.title?.romaji || 'Unknown Anime'
+            }));
         } catch (aniListErr) {
-            console.warn('AniList failed for schedule, switching to Kitsu Fallback:', aniListErr.message);
+            console.warn('AniList failed for schedule, switching to Jikan (MAL) Fallback:', aniListErr.message);
         }
 
-        // 2. Secondary Fallback: Kitsu API
+        // 3️⃣ المحاولة الثانية (Fallback): Jikan API (MyAnimeList)
         if (schedules.length === 0) {
-            const kitsuRes = await fetch('https://kitsu.io/api/edge/anime?filter[status]=current&page[limit]=10&sort=-userCount')
-                .then(res => res.json())
-                .catch(() => null);
+            sourceName = 'MyAnimeList';
+            try {
+                const dayName = now.toLocaleDateString('en-US', { weekday: 'lowercase', timeZone: 'UTC' });
+                const jikanRes = await fetch(`https://api.jikan.moe/v4/schedules?filter=${dayName}`)
+                    .then(res => res.json())
+                    .catch(() => null);
 
-            if (kitsuRes?.data) {
-                schedules = kitsuRes.data.map(item => ({
-                    episode: item.attributes.episodeCount || 'N/A',
-                    airingAt: Math.floor(Date.now() / 1000), // Approximate timestamp
-                    media: {
-                        title: {
-                            english: item.attributes.titles.en || item.attributes.canonicalTitle,
-                            romaji: item.attributes.canonicalTitle
-                        }
-                    }
-                }));
+                if (jikanRes?.data) {
+                    schedules = jikanRes.data.map(item => ({
+                        episode: item.episodes || 'New',
+                        // استخدام وقت الصدور الحالي كـ Timestamp تقريبي لو مش متاح
+                        airingAt: item.aired?.from ? Math.floor(new Date(item.aired.from).getTime() / 1000) : Math.floor(Date.now() / 1000),
+                        title: item.title_english || item.title
+                    }));
+                }
+            } catch (jikanErr) {
+                console.error('Jikan Fallback failed:', jikanErr.message);
             }
         }
 
+        // لو مفيش بيانات من المصدرين
         if (schedules.length === 0) {
             return await interaction.editReply('📅 No new anime episodes scheduled for today!');
         }
 
-        const listContent = schedules.map(item => {
-            const title = (item.media?.title?.english || item.media?.title?.romaji || 'Unknown Anime');
+        // 4️⃣ تنسيق القائمة والقطع الذكي لمنع تخريب الـ Markdown
+        let descriptionLines = [];
+        for (const item of schedules) {
             const timeString = `<t:${item.airingAt}:t>`;
-            return `• **Ep ${item.episode}** - **${title}** at ${timeString}`;
-        }).join('\n');
-
-        const safeDescription = listContent.length > 3900 
-            ? listContent.substring(0, 3900) + '\n\n*...and more episodes.*' 
-            : listContent;
+            const line = `• **Ep ${item.episode}** - **${item.title}** at ${timeString}`;
+            
+            // تحقق إن إجمالي الحروف متعداش 3800 حرف قبل الإضافة
+            const currentTotalLength = descriptionLines.join('\n').length;
+            if (currentTotalLength + line.length > 3800) {
+                descriptionLines.push('\n*...and more episodes today.*');
+                break;
+            }
+            descriptionLines.push(line);
+        }
 
         const embed = new EmbedBuilder()
             .setColor('#ff69b4')
             .setTitle('📅 Today\'s Anime Schedule')
-            .setDescription(safeDescription)
-            .setFooter({ text: `Total scheduled today: ${schedules.length}` })
+            .setDescription(descriptionLines.join('\n'))
+            .setFooter({ text: `Total scheduled: ${schedules.length} • Powered by ${sourceName}` })
             .setTimestamp();
 
         await interaction.editReply({ embeds: [embed] });
@@ -961,7 +1005,7 @@ else if (commandName === 'schedule') {
         await interaction.editReply('❌ An error occurred while fetching today\'s schedule. Please try again later!');
     }
 }
-        // 🎭 Character Search Command (Updated with Emergency Backup)
+        // 🎭 Character Search Command
 else if (commandName === 'character') {
     const characterName = interaction.options.getString('name');
     await interaction.deferReply();
@@ -977,20 +1021,14 @@ else if (commandName === 'character') {
         favourites
         gender
         age
-        dateOfBirth { year month day }
-        media (perPage: 25, sort: POPULARITY_DESC) {
+        media (perPage: 5, sort: POPULARITY_DESC) {
           edges {
             voiceActors (language: JAPANESE) {
-              id
-              name { full native }
+              name { full }
               siteUrl
             }
             node {
-              id
               title { romaji english }
-              season
-              seasonYear
-              type
             }
           }
         }
@@ -999,7 +1037,7 @@ else if (commandName === 'character') {
 
     let char = null;
 
-    // 1. Try AniList First
+    // 1️⃣ المحاولة الأولى: AniList API
     try {
         const data = await fetchAniList(gqlQuery, { search: characterName });
         char = data?.Character;
@@ -1007,7 +1045,7 @@ else if (commandName === 'character') {
         console.error('Character AniList Fetch Error:', err.message);
     }
 
-    // 2. Emergency Backup (Jikan API) if AniList is down or returned no character
+    // 2️⃣ المحاولة الثانية (Emergency Backup - Jikan API)
     if (!char) {
         console.log(`AniList failed or returned no character for [${characterName}]. Attempting Backup...`);
         try {
@@ -1016,10 +1054,13 @@ else if (commandName === 'character') {
             const jikanChar = jikanData?.data?.[0];
 
             if (jikanChar) {
-                let cleanDesc = jikanChar.about
-                    ? jikanChar.about.replace(/~!/g, '||').replace(/!~/g, '||').replace(/<[^>]*>/gm, '')
-                    : 'No description available.';
-                if (cleanDesc.length > 350) cleanDesc = cleanDesc.substring(0, 350) + '...';
+                // تنظيف الوصف الذكي مع حماية الـ Markdown
+                let rawDesc = jikanChar.about || 'No description available.';
+                rawDesc = rawDesc.replace(/<[^>]*>/gm, '').replace(/~!/g, '||').replace(/!~/g, '||');
+
+                let cleanDesc = rawDesc.length > 350 ? rawDesc.substring(0, 350) + '...' : rawDesc;
+                // إغلاق الـ Spoiler لو اتطبق ونقطع في وسطه
+                if ((cleanDesc.match(/\|\|/g) || []).length % 2 !== 0) cleanDesc += '||';
 
                 const nameFull = jikanChar.name || characterName;
                 const nameKanji = jikanChar.name_kanji ? ` (${jikanChar.name_kanji})` : '';
@@ -1045,13 +1086,15 @@ else if (commandName === 'character') {
 
                 await interaction.editReply({ embeds: [embed], components: [row] });
 
-                // Dev Alert
+                // تنبيه المطور عبر الـ DM بدلاً من الـ FollowUp العلني
                 const DEV_ID = '1326815636395003966';
                 if (interaction.user.id === DEV_ID) {
-                    await interaction.followUp({
-                        content: '🚨 **[Dev Alert]:** AniList character lookup was unreachable or empty. Fetched via Emergency Backup (Jikan)!',
-                        ephemeral: true
-                    });
+                    try {
+                        const devUser = await interaction.client.users.fetch(DEV_ID);
+                        await devUser.send(`🚨 **[Dev Alert]:** AniList character lookup failed for **"${characterName}"**. Used Emergency Backup (Jikan)!`);
+                    } catch (dmErr) {
+                        console.warn('Could not send Dev Alert DM:', dmErr.message);
+                    }
                 }
 
                 return;
@@ -1063,19 +1106,22 @@ else if (commandName === 'character') {
         return await interaction.editReply(`❌ Sorry, no character found with the name **"${characterName}"** on AniList or Emergency Backup.`);
     }
 
-    // 3. Render AniList Data
+    // 3️⃣ عرض بيانات AniList الأصلي
     try {
         const nameFull = char.name?.full || characterName;
         const nameNative = char.name?.native ? ` (${char.name.native})` : '';
-        const animeSource = char.media?.edges?.[0]?.node?.title?.english
-            || char.media?.edges?.[0]?.node?.title?.romaji
-            || 'Unknown Anime';
+        
+        // استخراج أول انمي ومؤدي الصوت الياباني
+        const firstEdge = char.media?.edges?.[0];
+        const animeSource = firstEdge?.node?.title?.english || firstEdge?.node?.title?.romaji || 'Unknown Anime';
+        const vaName = firstEdge?.voiceActors?.[0]?.name?.full || 'N/A';
 
-        let cleanDesc = char.description ? char.description
-            .replace(/~!/g, '||')
-            .replace(/!~/g, '||')
-            .replace(/<[^>]*>/gm, '') : 'No description available.';
-        if (cleanDesc.length > 350) cleanDesc = cleanDesc.substring(0, 350) + '...';
+        // تنظيف الوصف وإغلاق الـ Spoilers المقطوعة
+        let rawDesc = char.description || 'No description available.';
+        rawDesc = rawDesc.replace(/<[^>]*>/gm, '').replace(/~!/g, '||').replace(/!~/g, '||');
+
+        let cleanDesc = rawDesc.length > 350 ? rawDesc.substring(0, 350) + '...' : rawDesc;
+        if ((cleanDesc.match(/\|\|/g) || []).length % 2 !== 0) cleanDesc += '||';
 
         const embed = new EmbedBuilder()
             .setTitle(`🎭 ${nameFull}${nameNative}`)
@@ -1083,6 +1129,7 @@ else if (commandName === 'character') {
             .setDescription(cleanDesc)
             .addFields(
                 { name: '📺 From Anime', value: animeSource, inline: true },
+                { name: '🎙️ Voice Actor', value: vaName, inline: true },
                 { name: '❤️ Favorites', value: `${char.favourites ? char.favourites.toLocaleString() : 0}`, inline: true }
             )
             .setImage(char.image?.large || 'https://i.imgur.com/AGv4yDI.png')
@@ -1105,7 +1152,7 @@ else if (commandName === 'character') {
         await interaction.editReply({ embeds: [embed], components: [row] });
     } catch (err) {
         console.error('Character command error:', err);
-        await interaction.editReply('Failed to fetch character data.');
+        await interaction.editReply('❌ Failed to fetch character data.');
     }
 }
    // ⭐ Favorite Command (With Emergency Fallback & Dev Alert)
@@ -1285,70 +1332,112 @@ else if (commandName === 'unfavorite') {
 }
    // 💖 My Favorites Command (Hidden/Ephemeral)
 else if (commandName === 'myfavorites') {
-    await interaction.deferReply({ ephemeral: true });
+    // استخدام الطريقة الحديثة لـ Ephemeral في Discord.js v14
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
     try {
-        const favorites = await FavoriteItem.find({ userId: interaction.user.id });
+        // 1️⃣ استعلام سريع وخفيف من Mongoose باستخدام select و lean
+        const favorites = await FavoriteItem.find({ userId: interaction.user.id })
+            .select('animeTitle')
+            .lean();
+
         if (!favorites || favorites.length === 0) {
-            return await interaction.editReply('You currently have no anime saved in your personal favorites. Use `/favorite <title>` to add some!');
+            return await interaction.editReply({
+                content: '⭐ You currently have no anime saved in your personal favorites.\nUse `/favorite <title>` to add some!'
+            });
         }
 
-        // Format list with proper limits to prevent Discord API errors
-        let list = favorites.map((item, index) => `${index + 1}. **${item.animeTitle}**`).join('\n');
-        
-        if (list.length > 3900) {
-            list = list.substring(0, 3900) + '\n\n*...and more (list truncated due to size limits).*';
+        // 2️⃣ بناء القائمة والقطع الذكي لمنع كسر التنسيق
+        let descriptionLines = [];
+        for (let index = 0; index < favorites.length; index++) {
+            const line = `${index + 1}. **${favorites[index].animeTitle}**`;
+            
+            // التحقق من الحجم الكلي لمنع تجاوز 3800 حرف
+            const currentTotalLength = descriptionLines.join('\n').length;
+            if (currentTotalLength + line.length > 3800) {
+                descriptionLines.push(`\n*...and ${favorites.length - index} more anime (truncated due to limit).*`);
+                break;
+            }
+            descriptionLines.push(line);
         }
 
         const embed = new EmbedBuilder()
             .setTitle('⭐ Your Personal Favorite Anime List')
-            .setDescription(list)
+            .setDescription(descriptionLines.join('\n'))
             .setColor('#f39c12')
-            .addFields({ name: '📊 Total Favorites', value: `${favorites.length} anime`, inline: true })
-            .setFooter({ text: 'AniTracker • You will receive Direct Messages when new episodes air!' });
+            .addFields(
+                { name: '📊 Total Favorites', value: `${favorites.length} anime`, inline: true },
+                { name: '💡 Tip', value: 'Use `/unfavorite <title>` to remove any anime from your list.', inline: true }
+            )
+            .setFooter({ text: 'AniTracker • Direct Message notifications enabled for these!' })
+            .setTimestamp();
 
         await interaction.editReply({ embeds: [embed] });
+
     } catch (err) {
         console.error('MyFavorites command error:', err);
-        await interaction.editReply('Failed to fetch your personal favorites list.');
+        await interaction.editReply({
+            content: '❌ Failed to fetch your personal favorites list. Please try again later!'
+        });
     }
 }
     // 📖 Help Command
-    else if (commandName === 'help') {
-        const embed = new EmbedBuilder()
-            .setTitle('🤖 AniTracker - Commands Guide')
-            .setDescription('Here is the full list of available slash commands:')
-            .addFields(
-                { name: '🚀 `/start`', value: 'Welcome guide and bug report contact.', inline: false },
-                { name: '⭐ `/favorite <title>`', value: 'Add anime to personal favorites (DM notifications).', inline: false },
-                { name: '❌ `/unfavorite <title>`', value: 'Remove anime from personal favorites.', inline: false },
-                { name: '💖 `/myfavorites`', value: 'Show your personal favorite anime list.', inline: false },
-                { name: '🔍 `/anime <title>`', value: 'Search for anime details, quick track, or add to favorites.', inline: false },
-                { name: '📖 `/manga <title>`', value: 'Search for manga details.', inline: false },
-                { name: '🎭 `/character <name>`', value: 'Search for anime characters.', inline: false },
-                { name: '🎲 `/genre`', value: 'Choose Anime or Manga, then pick a category for a recommendation. Ecchi/Hentai require manual age verification in DMs.', inline: false },
-                { name: '🎯 `/track <title>`', value: 'Track an anime for notifications in this channel.', inline: false },
-                { name: '🛑 `/untrack <title>`', value: 'Stop tracking an anime in this channel.', inline: false },
-                { name: '📌 `/mytracked`', value: 'Show all anime currently tracked in this server.', inline: false }
-            )
-            .setColor('#9b59b6')
-            .setFooter({ text: "Report bugs to developer: _h8rtless_   don't dm unless it's a real problem" });
+else if (commandName === 'help') {
+    const embed = new EmbedBuilder()
+        .setTitle('🤖 AniTracker - Commands Guide')
+        .setDescription('Welcome to **AniTracker**! Here is the categorized list of all available commands:')
+        .addFields(
+            { 
+                name: '🔍 Search & Discovery', 
+                value: 
+                    '`/anime <title>` - Search anime details & quick actions\n' +
+                    '`/manga <title>` - Search manga details\n' +
+                    '`/character <name>` - Search for anime characters\n' +
+                    '`/genre` - Get recommendations by category/genre\n' +
+                    '`/schedule` - View today\'s anime release schedule'
+            },
+            { 
+                name: '💖 Personal Favorites (DMs)', 
+                value: 
+                    '`/favorite <title>` - Add anime to your personal favorites\n' +
+                    '`/unfavorite <title>` - Remove anime from favorites\n' +
+                    '`/myfavorites` - View your personal favorites list'
+            },
+            { 
+                name: '📢 Server Channel Tracking', 
+                value: 
+                    '`/track <title>` - Track anime episode alerts in this channel\n' +
+                    '`/untrack <title>` - Stop tracking an anime in this channel\n' +
+                    '`/mytracked` - Show all tracked anime in this server'
+            },
+            { 
+                name: '🚀 Utility', 
+                value: '`/start` - Show the welcome guide & overview\n`/help` - Show this commands list' 
+            }
+        )
+        .setColor('#9b59b6')
+        .setThumbnail(client.user.displayAvatarURL())
+        .setFooter({ text: 'AniTracker • Need support? Click the links below!' });
 
-        const supportBtn = new ButtonBuilder()
-            .setLabel('💬 Support Server')
-            .setStyle(ButtonStyle.Link)
-            .setURL('https://discord.gg/H4Af2y4RD8');
+    const supportBtn = new ButtonBuilder()
+        .setLabel('💬 Support Server')
+        .setStyle(ButtonStyle.Link)
+        .setURL('https://discord.gg/H4Af2y4RD8');
 
-        const profileBtn = new ButtonBuilder()
-            .setLabel('👤 Developer Profile')
-            .setStyle(ButtonStyle.Link)
-            .setURL('https://discord.com/users/1326815636395003966');
+    const profileBtn = new ButtonBuilder()
+        .setLabel('👤 Developer Profile')
+        .setStyle(ButtonStyle.Link)
+        .setURL('https://discord.com/users/1326815636395003966');
 
-        const row = new ActionRowBuilder().addComponents(supportBtn, profileBtn);
+    const row = new ActionRowBuilder().addComponents(supportBtn, profileBtn);
 
-        // FIX: added ephemeral so only the person who ran /help sees the reply,
-        // consistent with /start, /myfavorites, and /mytracked.
-        await interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
-    }
+    // إرسال الرد مخفي للمستخدم فقط
+    await interaction.reply({ 
+        embeds: [embed], 
+        components: [row], 
+        flags: MessageFlags.Ephemeral 
+    });
+}
 
   // 🔍 Anime Command
 else if (commandName === 'anime') {
@@ -1372,7 +1461,7 @@ else if (commandName === 'anime') {
 
     let anime = null;
 
-    // 1. Try AniList First
+    // 1️⃣ المحاولة الأولى: AniList API
     try {
         const data = await fetchAniList(gqlQuery, { search: searchQuery });
         anime = data?.Media;
@@ -1380,42 +1469,51 @@ else if (commandName === 'anime') {
         console.error('AniList Fetch Error:', err.message);
     }
 
-    // 2. Fallback to Kitsu/Jikan if AniList failed or returned no data
+    // 2️⃣ المحاولة الثانية (Emergency Backup) إذا فشل AniList
     if (!anime) {
         console.log('AniList failed or returned no data. Fetching from Fallback...');
         try {
             const jikanData = await getAnimeJikan(searchQuery);
 
             if (jikanData) {
+                // تنظيف الوصف بشكل ذكي
+                let rawSynopsis = jikanData.synopsis || 'No synopsis available.';
+                rawSynopsis = rawSynopsis.replace(/<[^>]*>?/gm, '');
+                const cleanSynopsis = rawSynopsis.length > 320 
+                    ? rawSynopsis.substring(0, 320).trim() + '...' 
+                    : rawSynopsis;
+
                 const fallbackEmbed = new EmbedBuilder()
                     .setTitle(jikanData.title)
-                    .setURL(jikanData.url || 'https://kitsu.io')
+                    .setURL(jikanData.url || 'https://myanimelist.net')
                     .setThumbnail(jikanData.image || 'https://i.imgur.com/AGv4yDI.png')
                     .addFields(
                         { name: 'Episodes', value: `${jikanData.episodes ?? 'N/A'}`, inline: true },
                         { name: 'Status', value: jikanData.status || 'N/A', inline: true },
-                        { name: 'Score', value: jikanData.score || 'N/A', inline: true }
+                        { name: 'Score', value: jikanData.score ? `${jikanData.score}` : 'N/A', inline: true }
                     )
-                    .setDescription(jikanData.synopsis)
-                    .setColor('#FF5733');
+                    .setDescription(cleanSynopsis)
+                    .setColor('#FF5733')
+                    .setFooter({ text: 'AniTracker • Search (Backup API)' });
 
-                // 🎯 الأزرار تظهر فقط إذا كان الأنمي مستمر (Ongoing / Current / Airing)
+                // 🎯 الأزرار للانميات المستمرة
                 let fallbackComponents = [];
                 const currentStatus = (jikanData.status || '').toUpperCase();
                 const isOngoing = currentStatus.includes('RELEASING') || currentStatus.includes('CURRENT') || currentStatus.includes('AIRING');
 
                 if (isOngoing) {
+                    const animeIdentifier = jikanData.id || encodeURIComponent(searchQuery.replace(/\s+/g, '_'));
+
                     const fallbackFavBtn = new ButtonBuilder()
-                        .setCustomId(`fav_btn_${jikanData.id || searchQuery}`)
+                        .setCustomId(`fav_btn_${animeIdentifier}`)
                         .setLabel('⭐ Favorite (DM Alert)')
                         .setStyle(ButtonStyle.Primary);
 
                     const fallbackButtons = [fallbackFavBtn];
 
-                    // 🚫 زرار الـ Track يظهر فقط داخل السيرفرات (interaction.guildId موجود)
                     if (interaction.guildId) {
                         const fallbackTrackBtn = new ButtonBuilder()
-                            .setCustomId(`track_btn_${jikanData.id || searchQuery}`)
+                            .setCustomId(`track_btn_${animeIdentifier}`)
                             .setLabel('🎯 Channel Track')
                             .setStyle(ButtonStyle.Success);
                         fallbackButtons.unshift(fallbackTrackBtn);
@@ -1424,16 +1522,17 @@ else if (commandName === 'anime') {
                     fallbackComponents = [new ActionRowBuilder().addComponents(...fallbackButtons)];
                 }
 
-                // إرسال الـ Embed والأزرار للجميع
                 await interaction.editReply({ embeds: [fallbackEmbed], components: fallbackComponents });
 
-                // إرسال إشعار مخفي للـ Dev
+                // تنبيه المطور عبر الـ DM بدلاً من الـ FollowUp
                 const DEV_ID = '1326815636395003966';
                 if (interaction.user.id === DEV_ID) {
-                    await interaction.followUp({
-                        content: '🚨 **[Dev Alert]:** AniList was unreachable. This response was fetched via Emergency Backup!',
-                        ephemeral: true
-                    });
+                    try {
+                        const devUser = await interaction.client.users.fetch(DEV_ID);
+                        await devUser.send(`🚨 **[Dev Alert]:** AniList was unreachable for **"${searchQuery}"**. Fetched via Emergency Backup!`);
+                    } catch (dmErr) {
+                        console.warn('Could not send Dev Alert DM:', dmErr.message);
+                    }
                 }
 
                 return;
@@ -1442,33 +1541,41 @@ else if (commandName === 'anime') {
             console.error('Fallback Error:', fallbackErr);
         }
 
-        return await interaction.editReply('❌ Anime not found on AniList or Emergency Backup.');
+        return await interaction.editReply(`❌ Sorry, no anime found matching **"${searchQuery}"** on AniList or Emergency Backup.`);
     }
 
-    // 3. Render AniList Data (If AniList succeeded)
+    // 3️⃣ عرض بيانات AniList الرئيسية
     try {
+        // التحقق من المحتوى المخصص للكبار (18+)
         if (anime.isAdult) {
+            const isNsfwChannel = interaction.channel?.nsfw === true;
             let isVerified = false;
-            try {
-                isVerified = Boolean(await AgeVerification.exists({ userId: interaction.user.id }));
-            } catch (err) {
-                console.error('age verification lookup error:', err);
-            }
 
-            if (!isVerified) {
-                return interaction.editReply({
-                    content: `🔞 **This anime is restricted to verified adults.**\n\n` +
-                             `👤 **Owner:** \`_h8rtless_\`\n` +
-                             `💬 Join our support server to open a ticket and verify your age:\n` +
-                             `https://discord.gg/H4Af2y4RD8`,
-                    embeds: [],
-                    components: []
-                });
+            if (!isNsfwChannel) {
+                try {
+                    isVerified = Boolean(await AgeVerification.exists({ userId: interaction.user.id }));
+                } catch (err) {
+                    console.error('Age verification lookup error:', err);
+                }
+
+                if (!isVerified) {
+                    return interaction.editReply({
+                        content: `🔞 **This anime contains adult content (18+).**\n\n` +
+                                 `⚠️ To view this content, use this command in an **NSFW channel** or verify your age on our support server:\n` +
+                                 `https://discord.gg/H4Af2y4RD8`,
+                        embeds: [],
+                        components: []
+                    });
+                }
             }
         }
 
-        const title = (anime.title && (anime.title.english || anime.title.romaji)) || searchQuery;
-        const cleanDesc = anime.description ? anime.description.replace(/<[^>]*>?/gm, '').substring(0, 300) + '...' : 'No synopsis available.';
+        const title = anime.title?.english || anime.title?.romaji || searchQuery;
+        
+        // تنظيف الوصف والقص التلقائي
+        let rawDesc = anime.description || 'No synopsis available.';
+        rawDesc = rawDesc.replace(/<[^>]*>?/gm, '');
+        const cleanDesc = rawDesc.length > 320 ? rawDesc.substring(0, 320).trim() + '...' : rawDesc;
 
         const embed = new EmbedBuilder()
             .setTitle(title)
@@ -1480,9 +1587,10 @@ else if (commandName === 'anime') {
                 { name: 'Score', value: anime.averageScore ? `${anime.averageScore} / 100` : 'N/A', inline: true }
             )
             .setDescription(cleanDesc)
-            .setColor('#FF5733');
+            .setColor('#FF5733')
+            .setFooter({ text: 'AniTracker • Anime Search' });
 
-        // 🎯 الأزرار تظهر فقط إذا كانت الحالة RELEASING (Ongoing)
+        // 🎯 الأزرار للانميات المستمرة فقط
         let components = [];
         if (anime.status === 'RELEASING') {
             const favBtn = new ButtonBuilder()
@@ -1492,7 +1600,6 @@ else if (commandName === 'anime') {
 
             const buttons = [favBtn];
 
-            // 🚫 زرار الـ Track يظهر فقط داخل السيرفرات (interaction.guildId موجود)
             if (interaction.guildId) {
                 const trackBtn = new ButtonBuilder()
                     .setCustomId(`track_btn_${anime.id}`)
@@ -1510,24 +1617,62 @@ else if (commandName === 'anime') {
         });
     } catch (err) {
         console.error('Anime Command Render Error:', err);
-        await interaction.editReply('Failed to display anime data.');
+        await interaction.editReply('❌ Failed to display anime data. Please try again!');
     }
 }
-    // 🌐 أمر الـ servers بيتحط هنا على طول تحت الـ eval
-    else if (commandName === 'servers') {
-        if (interaction.user.id !== '1326815636395003966') {
-            return interaction.reply({ content: '❌ Dev only command!', flags: 64 });
-        }
-
-        const guilds = interaction.client.guilds.cache
-            .map(g => `• **${g.name}** (\`${g.id}\`) - ${g.memberCount} members`)
-            .join('\n');
-
-        await interaction.reply({
-            content: `🌐 **Server List (${interaction.client.guilds.cache.size}):**\n\n${guilds.slice(0, 1900)}`,
-            flags: 64
+    // 🌐 Dev-Only Server List Command
+else if (commandName === 'servers') {
+    // 1️⃣ التحقق من هوية المطور
+    const DEV_ID = '1326815636395003966';
+    if (interaction.user.id !== DEV_ID) {
+        return interaction.reply({ 
+            content: '❌ This command is restricted to the bot developer only!', 
+            flags: 64 
         });
     }
+
+    await interaction.deferReply({ flags: 64 });
+
+    try {
+        // 2️⃣ ترتيب السيرفرات من الأكبر للأصغر حسب عدد الأعضاء
+        const sortedGuilds = Array.from(interaction.client.guilds.cache.values())
+            .sort((a, b) => b.memberCount - a.memberCount);
+
+        const totalGuilds = sortedGuilds.length;
+        const totalMembers = sortedGuilds.reduce((acc, g) => acc + g.memberCount, 0);
+
+        // 3️⃣ تجميع الأسطر مع القطع الذكي لمنع تجاوز حد ديسكورد
+        let descriptionLines = [];
+        for (let i = 0; i < sortedGuilds.length; i++) {
+            const g = sortedGuilds[i];
+            const line = `${i + 1}. **${g.name}** (\`${g.id}\`) - **${g.memberCount.toLocaleString()}** members`;
+            
+            const currentTotalLength = descriptionLines.join('\n').length;
+            if (currentTotalLength + line.length > 3800) {
+                descriptionLines.push(`\n*...and ${totalGuilds - i} more servers.*`);
+                break;
+            }
+            descriptionLines.push(line);
+        }
+
+        const embed = new EmbedBuilder()
+            .setTitle(`🌐 Connected Servers (${totalGuilds.toLocaleString()})`)
+            .setDescription(descriptionLines.join('\n'))
+            .setColor('#3498db')
+            .addFields(
+                { name: '👥 Total Users Reached', value: `\`${totalMembers.toLocaleString()}\` members`, inline: true },
+                { name: '📊 Server Count', value: `\`${totalGuilds.toLocaleString()}\` servers`, inline: true }
+            )
+            .setFooter({ text: 'AniTracker • Developer Admin Panel' })
+            .setTimestamp();
+
+        await interaction.editReply({ embeds: [embed] });
+
+    } catch (err) {
+        console.error('Servers command error:', err);
+        await interaction.editReply('❌ Failed to fetch server list.');
+    }
+}
         // 🛠️ أمر الـ maintenance-dm
     else if (commandName === 'maintenance-dm') {
         if (interaction.user.id !== '1326815636395003966') {
@@ -1637,120 +1782,138 @@ else if (commandName === 'anime') {
         });
     }
     // 📖 Manga Command
-    else if (commandName === 'manga') {
-        await interaction.deferReply();
-        const searchQuery = interaction.options.getString('title');
+else if (commandName === 'manga') {
+    await interaction.deferReply();
+    const searchQuery = interaction.options.getString('title');
 
-        const gqlQuery = `
-        query ($search: String) {
-          Media (search: $search, type: MANGA) {
-            id
-            title { romaji english }
-            chapters
-            status
-            averageScore
-            description(asHtml: false)
-            coverImage { large }
-            siteUrl
-            isAdult
-          }
-        }`;
+    const gqlQuery = `
+    query ($search: String) {
+      Media (search: $search, type: MANGA) {
+        id
+        title { romaji english }
+        chapters
+        volumes
+        status
+        averageScore
+        description(asHtml: false)
+        coverImage { large }
+        siteUrl
+        isAdult
+      }
+    }`;
 
-        let manga = null;
+    let manga = null;
 
-        // 1. Try AniList First
+    // 1️⃣ المحاولة الأولى: AniList API
+    try {
+        const data = await fetchAniList(gqlQuery, { search: searchQuery });
+        manga = data?.Media;
+    } catch (err) {
+        console.error('AniList Manga Fetch Error:', err.message);
+    }
+
+    // 2️⃣ المحاولة الثانية (Emergency Backup) إذا فشل AniList
+    if (!manga) {
+        console.log('AniList failed or returned no data for Manga. Fetching from Fallback...');
         try {
-            const data = await fetchAniList(gqlQuery, { search: searchQuery });
-            manga = data?.Media;
-        } catch (err) {
-            console.error('AniList Manga Fetch Error:', err.message);
-        }
+            const jikanData = await getAnimeJikan(searchQuery);
 
-        // 2. Fallback if AniList failed or returned no data
-        if (!manga) {
-            console.log('AniList failed or returned no data for Manga. Fetching from Fallback...');
-            try {
-                const jikanData = await getAnimeJikan(searchQuery);
+            if (jikanData) {
+                // تنظيف الوصف بشكل آمن
+                let rawSynopsis = jikanData.synopsis || 'No synopsis available.';
+                rawSynopsis = rawSynopsis.replace(/<[^>]*>?/gm, '');
+                const cleanSynopsis = rawSynopsis.length > 320 
+                    ? rawSynopsis.substring(0, 320).trim() + '...' 
+                    : rawSynopsis;
 
-                if (jikanData) {
-                    const fallbackEmbed = new EmbedBuilder()
-                        .setTitle(jikanData.title)
-                        .setURL(jikanData.url || 'https://kitsu.io')
-                        .setThumbnail(jikanData.image || 'https://i.imgur.com/AGv4yDI.png')
-                        .addFields(
-                            { name: 'Chapters', value: `${jikanData.chapters ?? jikanData.episodes ?? 'N/A'}`, inline: true },
-                            { name: 'Status', value: jikanData.status || 'N/A', inline: true },
-                            { name: 'Score', value: jikanData.score || 'N/A', inline: true }
-                        )
-                        .setDescription(jikanData.synopsis)
-                        .setColor('#33FF57');
+                const fallbackEmbed = new EmbedBuilder()
+                    .setTitle(jikanData.title)
+                    .setURL(jikanData.url || 'https://myanimelist.net')
+                    .setThumbnail(jikanData.image || 'https://i.imgur.com/AGv4yDI.png')
+                    .addFields(
+                        { name: 'Chapters', value: `${jikanData.chapters ?? jikanData.episodes ?? 'N/A'}`, inline: true },
+                        { name: 'Status', value: jikanData.status || 'N/A', inline: true },
+                        { name: 'Score', value: jikanData.score ? `${jikanData.score}` : 'N/A', inline: true }
+                    )
+                    .setDescription(cleanSynopsis)
+                    .setColor('#33FF57')
+                    .setFooter({ text: 'AniTracker • Manga Search (Backup API)' });
 
-                    // 1. إرسال الـ Embed العادي للجميع في الشات
-                    await interaction.editReply({ embeds: [fallbackEmbed], components: [] });
+                await interaction.editReply({ embeds: [fallbackEmbed], components: [] });
 
-                    // 2. إرسال إشعار مخفي للـ Dev فقط (صهيب)
-                    const DEV_ID = '1326815636395003966';
-
-                    if (interaction.user.id === DEV_ID) {
-                        await interaction.followUp({
-                            content: '🚨 **[Dev Alert]:** AniList was unreachable. This manga response was fetched via the Emergency Backup (Kitsu)!',
-                            ephemeral: true
-                        });
+                // تنبيه المطور عبر الـ DM بدلاً من الـ FollowUp
+                const DEV_ID = '1326815636395003966';
+                if (interaction.user.id === DEV_ID) {
+                    try {
+                        const devUser = await interaction.client.users.fetch(DEV_ID);
+                        await devUser.send(`🚨 **[Dev Alert]:** AniList was unreachable for Manga **"${searchQuery}"**. Fetched via Backup!`);
+                    } catch (dmErr) {
+                        console.warn('Could not send Dev Alert DM:', dmErr.message);
                     }
-
-                    return; // إنهاء الدالة بنجاح
                 }
-            } catch (fallbackErr) {
-                console.error('Manga Fallback Error:', fallbackErr);
-            }
 
-            return await interaction.editReply('❌ Manga not found on AniList or Emergency Backup.');
+                return;
+            }
+        } catch (fallbackErr) {
+            console.error('Manga Fallback Error:', fallbackErr);
         }
 
-        // 3. Render AniList Data (If AniList succeeded)
-        try {
-            // فحص ما إذا كانت المانجا 18+
-            if (manga.isAdult) {
-                let isVerified = false;
+        return await interaction.editReply(`❌ Sorry, no manga found matching **"${searchQuery}"** on AniList or Emergency Backup.`);
+    }
+
+    // 3️⃣ عرض بيانات AniList الرئيسية
+    try {
+        // فحص المحتوى الخاص بالكبار (18+)
+        if (manga.isAdult) {
+            const isNsfwChannel = interaction.channel?.nsfw === true;
+            let isVerified = false;
+
+            if (!isNsfwChannel) {
                 try {
                     isVerified = Boolean(await AgeVerification.exists({ userId: interaction.user.id }));
                 } catch (err) {
-                    console.error('age verification lookup error:', err);
+                    console.error('Age verification lookup error:', err);
                 }
 
                 if (!isVerified) {
                     return interaction.editReply({
-                        content: `🔞 **This manga is restricted to verified adults.**\n\n` +
-                                 `👤 **Owner:** \`_h8rtless_\`\n` +
-                                 `💬 Join our support server to open a ticket and verify your age:\n` +
+                        content: `🔞 **This manga contains adult content (18+).**\n\n` +
+                                 `⚠️ To view this content, use this command in an **NSFW channel** or verify your age on our support server:\n` +
                                  `https://discord.gg/H4Af2y4RD8`,
-                        embeds: []
+                        embeds: [],
+                        components: []
                     });
                 }
             }
-
-            const title = (manga.title && (manga.title.english || manga.title.romaji)) || searchQuery;
-            const cleanDesc = manga.description ? manga.description.replace(/<[^>]*>?/gm, '').substring(0, 300) + '...' : 'No synopsis available.';
-
-            const embed = new EmbedBuilder()
-                .setTitle(title)
-                .setURL(manga.siteUrl || 'https://anilist.co')
-                .setThumbnail(manga.coverImage?.large || 'https://i.imgur.com/AGv4yDI.png')
-                .addFields(
-                    { name: 'Chapters', value: `${manga.chapters ?? 'N/A'}`, inline: true },
-                    { name: 'Status', value: manga.status || 'N/A', inline: true },
-                    { name: 'Score', value: manga.averageScore ? `${manga.averageScore} / 100` : 'N/A', inline: true }
-                )
-                .setDescription(cleanDesc)
-                .setColor('#33FF57');
-
-            await interaction.editReply({ embeds: [embed] });
-        } catch (err) {
-            console.error('Manga Command Render Error:', err);
-            await interaction.editReply('Failed to display manga data.');
         }
-    }
 
+        const title = manga.title?.english || manga.title?.romaji || searchQuery;
+        
+        // تنظيف القص والوصف
+        let rawDesc = manga.description || 'No synopsis available.';
+        rawDesc = rawDesc.replace(/<[^>]*>?/gm, '');
+        const cleanDesc = rawDesc.length > 320 ? rawDesc.substring(0, 320).trim() + '...' : rawDesc;
+
+        const embed = new EmbedBuilder()
+            .setTitle(title)
+            .setURL(manga.siteUrl || 'https://anilist.co')
+            .setThumbnail(manga.coverImage?.large || 'https://i.imgur.com/AGv4yDI.png')
+            .addFields(
+                { name: 'Chapters', value: `${manga.chapters ?? 'N/A'}`, inline: true },
+                { name: 'Volumes', value: `${manga.volumes ?? 'N/A'}`, inline: true },
+                { name: 'Status', value: manga.status || 'N/A', inline: true },
+                { name: 'Score', value: manga.averageScore ? `${manga.averageScore} / 100` : 'N/A', inline: true }
+            )
+            .setDescription(cleanDesc)
+            .setColor('#33FF57')
+            .setFooter({ text: 'AniTracker • Manga Search' });
+
+        await interaction.editReply({ embeds: [embed] });
+    } catch (err) {
+        console.error('Manga Command Render Error:', err);
+        await interaction.editReply('❌ Failed to display manga data. Please try again!');
+    }
+}
     // 🎲 Genre Command
     else if (commandName === 'genre') {
         await interaction.reply({
@@ -1762,10 +1925,18 @@ else if (commandName === 'anime') {
 
    // 🎯 Track Command (Server Only + Emergency Fallback)
 else if (commandName === 'track') {
-    // 1. Strict Server Guard (Direct check before deferring reply)
+    // 1️⃣ التحقق من وجود الأمر داخل سيرفر
     if (!interaction.guildId) {
         return interaction.reply({
             content: '🎯 `/track` works inside a server channel! Want personal alerts instead? Try `/favorite <title>` — you\'ll get a DM whenever a new episode drops.',
+            flags: 64
+        });
+    }
+
+    // 2️⃣ التحقق من صلاحيات العضو (يجب أن يملك صلاحية إدارة القنوات)
+    if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageChannels)) {
+        return interaction.reply({
+            content: '❌ You need **Manage Channels** permission to set up tracking in this server.',
             flags: 64
         });
     }
@@ -1787,7 +1958,7 @@ else if (commandName === 'track') {
 
     let anime = null;
 
-    // 2. Try AniList First
+    // 3️⃣ المحاولة الأولى: AniList API
     try {
         const data = await fetchAniList(gqlQuery, { search: searchQuery });
         anime = data?.Media;
@@ -1795,7 +1966,7 @@ else if (commandName === 'track') {
         console.error('Track AniList Fetch Error:', err.message);
     }
 
-    // 3. Emergency Backup (Kitsu API) if AniList fails
+    // 4️⃣ المحاولة الثانية (Emergency Backup - Kitsu API)
     if (!anime) {
         console.log(`AniList failed or returned no data for track [${searchQuery}]. Attempting Backup...`);
         try {
@@ -1805,7 +1976,8 @@ else if (commandName === 'track') {
 
             if (kitsuAnime) {
                 const attr = kitsuAnime.attributes;
-                const kitsuId = parseInt(kitsuAnime.id);
+                // حماية الـ ID بإضافة بادئة تمنع التضارب مع AniList IDs
+                const kitsuId = `kitsu_${kitsuAnime.id}`;
                 const animeTitle = attr.canonicalTitle || attr.titles?.en || searchQuery;
                 const coverUrl = attr.posterImage?.large || 'https://i.imgur.com/AGv4yDI.png';
                 const siteUrl = `https://kitsu.io/anime/${kitsuAnime.id}`;
@@ -1813,7 +1985,7 @@ else if (commandName === 'track') {
 
                 const existing = await TrackedItem.findOne({ guildId: interaction.guildId, animeId: kitsuId });
                 if (existing) {
-                    return await interaction.editReply(`**${animeTitle}** is already being tracked in this server!`);
+                    return await interaction.editReply(`⚠️ **${animeTitle}** is already being tracked in this server!`);
                 }
 
                 await TrackedItem.create({
@@ -1822,25 +1994,28 @@ else if (commandName === 'track') {
                     animeId: kitsuId,
                     animeTitle: animeTitle,
                     lastEpisodes: attr.episodeCount || 0,
-                    lastStatus: animeStatus
+                    lastStatus: animeStatus,
+                    source: 'kitsu'
                 });
 
                 const embed = new EmbedBuilder()
                     .setTitle('🎯 Tracking Started!')
-                    .setDescription(`Now tracking **[${animeTitle}](${siteUrl})** in this channel.\nYou will receive alerts here when new episodes release!`)
+                    .setDescription(`Now tracking **[${animeTitle}](${siteUrl})** in <#${interaction.channelId}>.\nYou will receive alerts here when new episodes release!`)
                     .setThumbnail(coverUrl)
                     .setColor('#3498db')
                     .setFooter({ text: 'AniTracker • Emergency Backup' });
 
                 await interaction.editReply({ embeds: [embed] });
 
-                // Dev Alert
+                // تنبيه المطور عبر الـ DM
                 const DEV_ID = '1326815636395003966';
                 if (interaction.user.id === DEV_ID) {
-                    await interaction.followUp({
-                        content: '🚨 **[Dev Alert]:** AniList was unreachable for `/track`. Processed via Emergency Backup (Kitsu)!',
-                        flags: 64
-                    });
+                    try {
+                        const devUser = await interaction.client.users.fetch(DEV_ID);
+                        await devUser.send(`🚨 **[Dev Alert]:** AniList was unreachable for \`/track\` (${searchQuery}). Processed via Emergency Backup (Kitsu)!`);
+                    } catch (dmErr) {
+                        console.warn('Could not send Dev Alert DM:', dmErr.message);
+                    }
                 }
 
                 return;
@@ -1852,18 +2027,18 @@ else if (commandName === 'track') {
         return await interaction.editReply(`❌ Could not find **"${searchQuery}"** on AniList or Emergency Backup.`);
     }
 
-    // 4. Render/Save AniList Data
+    // 5️⃣ حفظ بيانات AniList الرئيسية
     try {
-        const animeTitle = (anime.title && (anime.title.english || anime.title.romaji)) || searchQuery;
-        const animeId = anime.id;
+        const animeTitle = anime.title?.english || anime.title?.romaji || searchQuery;
+        const animeId = String(anime.id);
         const animeEpisodes = anime.episodes || 0;
         const animeStatus = anime.status || 'UNKNOWN';
-        const coverUrl = (anime.coverImage && anime.coverImage.large) || 'https://i.imgur.com/AGv4yDI.png';
+        const coverUrl = anime.coverImage?.large || 'https://i.imgur.com/AGv4yDI.png';
         const siteUrl = anime.siteUrl || 'https://anilist.co';
 
         const existing = await TrackedItem.findOne({ guildId: interaction.guildId, animeId: animeId });
         if (existing) {
-            return await interaction.editReply(`**${animeTitle}** is already being tracked in this server!`);
+            return await interaction.editReply(`⚠️ **${animeTitle}** is already being tracked in this server!`);
         }
 
         await TrackedItem.create({
@@ -1872,19 +2047,22 @@ else if (commandName === 'track') {
             animeId: animeId,
             animeTitle: animeTitle,
             lastEpisodes: animeEpisodes,
-            lastStatus: animeStatus
+            lastStatus: animeStatus,
+            source: 'anilist'
         });
 
         const embed = new EmbedBuilder()
             .setTitle('🎯 Tracking Started!')
-            .setDescription(`Now tracking **[${animeTitle}](${siteUrl})** in this channel.\nYou will receive alerts here when new episodes release!`)
+            .setDescription(`Now tracking **[${animeTitle}](${siteUrl})** in <#${interaction.channelId}>.\nYou will receive alerts here when new episodes release!`)
             .setThumbnail(coverUrl)
-            .setColor('#3498db');
+            .setColor('#3498db')
+            .setFooter({ text: 'AniTracker • Server Tracking' });
 
         await interaction.editReply({ embeds: [embed] });
+
     } catch (err) {
         console.error('Track Command Error:', err);
-        await interaction.editReply(`Failed to track this anime.`);
+        await interaction.editReply('❌ Failed to track this anime. Please try again later!');
     }
 }
    // 🛑 Untrack Command (Server Only + Local DB Search + Emergency Fallback)
@@ -2014,33 +2192,66 @@ else if (commandName === 'mytracked') {
         await interaction.editReply('Failed to fetch tracked list.');
     }
 }
-    // 🧪 Test Alert Command (Dev Only)
+   / 🧪 Test Alert Command (Dev Only)
 else if (commandName === 'testalert') {
     const DEV_ID = process.env.DEV_USER_ID || '1326815636395003966';
 
-    // 1. Strict Developer Guard
+    // 1️⃣ حماية الأمر للمطور فقط
     if (interaction.user.id !== DEV_ID) {
         return interaction.reply({
             content: '🚫 This command is reserved for the bot developer only.',
-            flags: 64
+            flags: MessageFlags.Ephemeral
         });
     }
 
-    await interaction.deferReply({ flags: 64 });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+    const startTime = Date.now();
 
     try {
         console.log(`[Dev Action]: ${interaction.user.tag} triggered manual checkUpdates()...`);
         
-        // 2. Trigger automated checker
-        await checkUpdates();
+        // 2️⃣ تشغيل الفحص التلقائي (وجمع النتيجة لو الدالة بترجع إحصائيات)
+        const stats = await checkUpdates(); 
+        const executionTime = ((Date.now() - startTime) / 1000).toFixed(2);
 
-        await interaction.editReply('✅ **Manual check complete!** Check your tracked channels and personal DMs for any new episode alerts.');
+        // 3️⃣ تجهيز Embed توضيحي للمطور بالتفاصيل
+        const embed = new EmbedBuilder()
+            .setTitle('🧪 Manual Alert Check Complete')
+            .setColor('#2ecc71')
+            .setDescription(`Successfully executed \`checkUpdates()\` in **${executionTime}s**.`)
+            .addFields(
+                { 
+                    name: '📊 Server Alerts Sent', 
+                    value: `\`${stats?.channelAlertsCount ?? 'Done'}\``, 
+                    inline: true 
+                },
+                { 
+                    name: '📬 Personal DMs Sent', 
+                    value: `\`${stats?.dmAlertsCount ?? 'Done'}\``, 
+                    inline: true 
+                },
+                { 
+                    name: '🔍 Total Items Checked', 
+                    value: `\`${stats?.totalChecked ?? 'All'}\``, 
+                    inline: true 
+                }
+            )
+            .setFooter({ text: 'AniTracker • Developer Testing Suite' })
+            .setTimestamp();
+
+        await interaction.editReply({ embeds: [embed] });
+
     } catch (err) {
         console.error('testalert command error:', err);
-        await interaction.editReply('❌ `checkUpdates()` encountered an error during manual execution. Check the console logs for full details.');
+        
+        const executionTime = ((Date.now() - startTime) / 1000).toFixed(2);
+        
+        await interaction.editReply({
+            content: `❌ **\`checkUpdates()\` failed after ${executionTime}s!**\n\`\`\`javascript\n${err.message || err}\n\`\`\`\nCheck the console logs for full stack trace.`
+        });
     }
 }
-
 // 🔄 Automated Episode Checker Function
 async function checkUpdates() {
     try {
