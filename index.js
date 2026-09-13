@@ -317,7 +317,7 @@ module.exports = {
     getAiredEpisodes
 };
 // Register Slash Commands
-const commands = [
+const allCommands = [
     new SlashCommandBuilder()
         .setName('start')
         .setDescription('Welcome guide, basic features, and support contact'),
@@ -375,12 +375,10 @@ const commands = [
             )),
     new SlashCommandBuilder()
     .setName('servers')
-    .setDescription('(Owner only) List all servers the bot is currently in')
-    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+    .setDescription('(Owner only) List all servers the bot is currently in'),
     new SlashCommandBuilder()
     .setName('broadcast')
     .setDescription('(Owner only) Broadcast an announcement message to all servers')
-    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .addStringOption(option =>
         option.setName('message')
             .setDescription('The announcement message to send')
@@ -419,8 +417,7 @@ const commands = [
     // The actual DEV_USER_ID check in the handler still gates who can run it.
     new SlashCommandBuilder()
         .setName('testalert')
-        .setDescription('(Dev only) Manually run the episode-alert check right now')
-        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+        .setDescription('(Dev only) Manually run the episode-alert check right now'),
     new SlashCommandBuilder()
         .setName('unverifyage')
         .setDescription('(Owner only) Remove 18+ age verification for a user')
@@ -431,7 +428,6 @@ const commands = [
      new SlashCommandBuilder()
         .setName('maintenance-dm')
         .setDescription('(Dev only) send a dm msg to all servers and users')
-        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .addStringOption(option =>
         option.setName('message')
             .setDescription('Type the message you want to send')
@@ -448,7 +444,6 @@ const commands = [
     new SlashCommandBuilder()
         .setName('eval')
         .setDescription('(Owner only) Evaluate JavaScript code')
-        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
         .addStringOption(option => 
             option.setName('code')
                 .setDescription('The JavaScript code to execute')
@@ -481,8 +476,22 @@ const commands = [
             option.setName('user')
                 .setDescription('User who completed age verification in DMs')
                 .setRequired(true))
-        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
 ].map(command => command.toJSON());
+
+const OWNER_COMMAND_NAMES = new Set([
+    'servers',
+    'eval',
+    'broadcast',
+    'verifyage',
+    'unverifyage',
+    'maintenance-dm',
+    'bot-status',
+    'getinvite',
+    'testalert'
+]);
+const commands = allCommands.filter(command => !OWNER_COMMAND_NAMES.has(command.name));
+const ownerCommands = allCommands.filter(command => OWNER_COMMAND_NAMES.has(command.name));
+const BOT_OWNER_ID = process.env.DEV_USER_ID || '1326815636395003966';
 
 client.once('ready', async () => {
     console.log(`Logged in as ${client.user.tag}!`);
@@ -498,6 +507,29 @@ client.once('ready', async () => {
             { body: commands }
         );
         console.log('Successfully reloaded application (/) commands!');
+
+        for (const guild of client.guilds.cache.values()) {
+            const registeredOwnerCommands = await rest.put(
+                Routes.applicationGuildCommands(client.user.id, guild.id),
+                { body: ownerCommands }
+            );
+
+            for (const command of registeredOwnerCommands) {
+                await rest.put(
+                    Routes.applicationCommandPermissions(client.user.id, guild.id, command.id),
+                    {
+                        body: {
+                            permissions: [{
+                                id: BOT_OWNER_ID,
+                                type: 1,
+                                permission: true
+                            }]
+                        }
+                    }
+                );
+            }
+        }
+        console.log('Registered owner-only commands with private permissions.');
     } catch (error) {
         console.error('Error registering commands:', error);
     }
