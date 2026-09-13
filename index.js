@@ -1116,6 +1116,9 @@ if (interaction.isButton()) {
 
         await interaction.deferReply({ ephemeral: true });
         const animeId = parseInt(interaction.customId.replace('track_btn_', ''));
+        if (!Number.isInteger(animeId)) {
+            return interaction.editReply('❌ This tracking action is no longer valid. Please run the anime search again.');
+        }
 
         const gqlQuery = `
         query ($id: Int) {
@@ -1174,6 +1177,9 @@ if (interaction.isButton()) {
     else if (interaction.customId.startsWith('fav_btn_')) {
         await interaction.deferReply({ ephemeral: true });
         const animeId = parseInt(interaction.customId.replace('fav_btn_', ''));
+        if (!Number.isInteger(animeId)) {
+            return interaction.editReply('❌ This favorite action is no longer valid. Please run the anime search again.');
+        }
 
         const gqlQuery = `
         query ($id: Int) {
@@ -2284,8 +2290,8 @@ else if (commandName === 'anime') {
                 const currentStatus = (jikanData.status || '').toUpperCase();
                 const isOngoing = currentStatus.includes('RELEASING') || currentStatus.includes('CURRENT') || currentStatus.includes('AIRING');
 
-                if (isOngoing) {
-                    const animeIdentifier = jikanData.id || encodeURIComponent(searchQuery.replace(/\s+/g, '_'));
+                if (isOngoing && Number.isInteger(Number(jikanData.id))) {
+                    const animeIdentifier = Number(jikanData.id);
 
                     const fallbackFavBtn = new ButtonBuilder()
                         .setCustomId(`fav_btn_${animeIdentifier}`)
@@ -3054,29 +3060,35 @@ async function runUpdateChecks() {
         
         for (const item of tracked) {
             try {
+                const isKitsu = item.source === 'kitsu' || String(item.animeId).startsWith('kitsu_');
                 const animeId = Number(item.animeId);
-                if (item.source === 'kitsu' || !Number.isInteger(animeId)) {
+                if (!isKitsu && !Number.isInteger(animeId)) {
                     continue;
                 }
 
-                const gqlQuery = `
-                query ($id: Int) {
-                  Media (id: $id, type: ANIME) {
-                    id
-                    title { romaji english }
-                    episodes
-                    status
-                    coverImage { large }
-                    siteUrl
-                    nextAiringEpisode { episode }
-                  }
-                }`;
+                let anime;
+                if (isKitsu) {
+                    anime = await fetchKitsuAnime(String(item.animeId).replace(/^kitsu_/, ''));
+                } else {
+                    const gqlQuery = `
+                    query ($id: Int) {
+                      Media (id: $id, type: ANIME) {
+                        id
+                        title { romaji english }
+                        episodes
+                        status
+                        coverImage { large }
+                        siteUrl
+                        nextAiringEpisode { episode }
+                      }
+                    }`;
 
-                const data = await fetchAniList(gqlQuery, { id: animeId });
-                const anime = data?.Media;
+                    const data = await fetchAniList(gqlQuery, { id: animeId });
+                    anime = data?.Media;
+                }
 
                 if (anime) {
-                    const currentEps = getAiredEpisodes(anime);
+                    const currentEps = isKitsu ? anime.episodes : getAiredEpisodes(anime);
                     const lastEps = item.lastEpisodes || 0;
 
                     if (currentEps > lastEps) {
@@ -3088,9 +3100,9 @@ async function runUpdateChecks() {
                         const channel = await client.channels.fetch(item.channelId).catch(() => null);
 
                         if (channel) {
-                            const animeTitle = (anime.title && (anime.title.english || anime.title.romaji)) || item.animeTitle;
+                            const animeTitle = (anime.title && (anime.title.english || anime.title.romaji)) || anime.title || item.animeTitle;
                             const siteUrl = anime.siteUrl || 'https://anilist.co';
-                            const coverUrl = (anime.coverImage && anime.coverImage.large) || 'https://i.imgur.com/AGv4yDI.png';
+                            const coverUrl = (anime.coverImage && anime.coverImage.large) || anime.image || 'https://i.imgur.com/AGv4yDI.png';
 
                             const embed = new EmbedBuilder()
                                 .setTitle('🚨 New Episode Alert!')
