@@ -46,6 +46,7 @@ const UserSettings = mongoose.model('UserSettings', UserSettingsSchema);
 const ServerSettingsSchema = new mongoose.Schema({
     guildId: { type: String, unique: true },
     alertChannelId: String,
+    botRoleId: String,
     serverAlertsEnabled: { type: Boolean, default: true }
 });
 const ServerSettings = mongoose.model('ServerSettings', ServerSettingsSchema);
@@ -88,6 +89,14 @@ async function getAvailableGenres(userId) {
 function getGenreDefinition(value) {
     return GENRE_OPTIONS.find(option => option.value === value);
 }
+
+function canRunServerSetup(interaction) {
+    const botOwnerId = process.env.DEV_USER_ID || '1326815636395003966';
+    return interaction.user.id === botOwnerId
+        || interaction.user.id === interaction.guild?.ownerId
+        || interaction.memberPermissions?.has(PermissionFlagsBits.Administrator);
+}
+
 function buildMediaTypeMenu(status) {
     const statusSuffix = status || 'all';
     const menu = new StringSelectMenuBuilder()
@@ -171,6 +180,17 @@ function buildNotificationButtons() {
                 .setStyle(ButtonStyle.Danger)
         )
     ];
+}
+
+function buildSetupChannelMenu() {
+    const menu = new ChannelSelectMenuBuilder()
+        .setCustomId('setup_alert_channel_select')
+        .setPlaceholder('Choose the tracking and alert channel')
+        .addChannelTypes(ChannelType.GuildText)
+        .setMinValues(1)
+        .setMaxValues(1);
+
+    return new ActionRowBuilder().addComponents(menu);
 }
 
 // FIX: removed GatewayIntentBits.GuildPresences — it's a privileged intent that
@@ -376,6 +396,9 @@ const commands = [
     new SlashCommandBuilder()
     .setName('schedule')
     .setDescription('📅 Displays today\'s anime release schedule!'),
+    new SlashCommandBuilder()
+        .setName('setup')
+        .setDescription('Set up AniTracker permissions and the server alert channel'),
     new SlashCommandBuilder()
     .setName('settings')
     .setDescription('Open the AniTracker settings menu'),
@@ -740,6 +763,56 @@ if (interaction.isChannelSelectMenu() && interaction.customId === 'settings_aler
 
     return interaction.update({
         content: `✅ Server episode alerts will now be sent to <#${channelId}>.`,
+        components: []
+    });
+}
+
+if (interaction.isChannelSelectMenu() && interaction.customId === 'setup_alert_channel_select') {
+    if (!interaction.guildId || !canRunServerSetup(interaction)) {
+        return interaction.update({
+            content: '❌ Only the server owner, an administrator, or the bot owner can finish AniTracker setup.',
+            components: []
+        });
+    }
+
+    const channelId = interaction.values[0];
+    const channel = await interaction.guild.channels.fetch(channelId).catch(() => null);
+    const botMember = await interaction.guild.members.fetch(client.user.id).catch(() => null);
+    if (!channel || !botMember) {
+        return interaction.update({
+            content: '❌ I could not verify the selected channel. Please run `/setup` again.',
+            components: []
+        });
+    }
+
+    const requiredPermissions = [
+        PermissionFlagsBits.ViewChannel,
+        PermissionFlagsBits.SendMessages,
+        PermissionFlagsBits.EmbedLinks,
+        PermissionFlagsBits.ReadMessageHistory
+    ];
+    const permissions = channel.permissionsFor(botMember);
+    const missingPermissions = requiredPermissions.filter(permission => !permissions?.has(permission));
+
+    if (missingPermissions.length > 0) {
+        return interaction.update({
+            content: `❌ I cannot send alerts in <#${channelId}>. Grant the bot **View Channel**, **Send Messages**, **Embed Links**, and **Read Message History** permissions, then run \`/setup\` again.`,
+            components: []
+        });
+    }
+
+    await ServerSettings.findOneAndUpdate(
+        { guildId: interaction.guildId },
+        { $set: { alertChannelId: channelId, serverAlertsEnabled: true } },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+    await TrackedItem.updateMany(
+        { guildId: interaction.guildId },
+        { $set: { channelId } }
+    );
+
+    return interaction.update({
+        content: `✅ AniTracker setup is complete!\n\n📢 Tracking and episode alerts will use <#${channelId}>.\n\nYou can change this later with \`/settings\` → **Alert Channel**.`,
         components: []
     });
 }
@@ -1204,6 +1277,63 @@ else if (commandName === 'settings') {
         components: [buildSettingsMenu()],
         flags: MessageFlags.Ephemeral
     });
+}
+// 📅 Today's Anime Schedule Command
+else if (commandName === 'setup') {
+    if (!interaction.guildId) {
+        return interaction.reply({
+            content: '❌ `/setup` can only be used inside a server.',
+            flags: MessageFlags.Ephemeral
+        });
+    }
+    if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
+        if (!canRunServerSetup(interaction)) {
+            return interaction.reply({
+                content: '❌ Only the server owner, an administrator, or the bot owner can run `/setup`.',
+                flags: MessageFlags.Ephemeral
+            });
+        }
+    }
+
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+    try {
+        const botMember = await interaction.guild.members.fetch(client.user.id);
+        const rolePermissions = [
+            PermissionFlagsBits.ViewChannel,
+            PermissionFlagsBits.SendMessages,
+            PermissionFlagsBits.EmbedLinks,
+            PermissionFlagsBits.ReadMessageHistory
+        ];
+        let botRole = interaction.guild.roles.cache.find(role => role.name === 'AniTracker Alerts' && !role.managed);
+
+        if (!botRole) {
+            botRole = await interaction.guild.roles.create({
+                name: 'AniTracker Alerts',
+                permissions: rolePermissions,
+                reason: 'AniTracker server setup'
+            });
+        } else {
+            await botRole.setPermissions(rolePermissions, 'AniTracker server setup');
+        }
+
+        await botMember.roles.add(botRole, 'AniTracker server setup');
+        await ServerSettings.findOneAndUpdate(
+            { guildId: interaction.guildId },
+            { $set: { botRoleId: botRole.id } },
+            { upsert: true, new: true, setDefaultsOnInsert: true }
+        );
+
+        await interaction.editReply({
+            content: `✅ The **${botRole.name}** role is ready and assigned to me.\n\nNow choose the channel where tracking and episode alerts should be sent:`,
+            components: [buildSetupChannelMenu()]
+        });
+    } catch (err) {
+        console.error('Setup role error:', err);
+        await interaction.editReply({
+            content: '❌ I could not create or assign the AniTracker role. Make sure I have **Manage Roles** and that my highest role is above the AniTracker Alerts role.'
+        });
+    }
 }
 // 📅 Today's Anime Schedule Command
 else if (commandName === 'schedule') {
