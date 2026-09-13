@@ -3,7 +3,7 @@ const axios = require('axios');
 const http = require('http');
 const mongoose = require('mongoose');
 require('dotenv').config();
-const { getAnimeJikan } = require('./jikanFallback');
+const { getAnimeJikan, getMangaJikan } = require('./jikanFallback');
 // Web server workaround to keep Render alive 24/7
 http.createServer((req, res) => {
     res.write("AniTracker is running!");
@@ -19,10 +19,11 @@ mongoose.connect(process.env.MONGODB_URI)
 const TrackSchema = new mongoose.Schema({
     guildId: String,
     channelId: String,
-    animeId: Number,
+    animeId: String,
     animeTitle: String,
     lastEpisodes: Number,
-    lastStatus: String
+    lastStatus: String,
+    source: { type: String, default: 'anilist' }
 });
 const TrackedItem = mongoose.model('TrackedItem', TrackSchema);
 
@@ -73,9 +74,10 @@ async function getAvailableGenres(userId) {
 function getGenreDefinition(value) {
     return GENRE_OPTIONS.find(option => option.value === value);
 }
-function buildMediaTypeMenu() {
+function buildMediaTypeMenu(status) {
+    const statusSuffix = status || 'all';
     const menu = new StringSelectMenuBuilder()
-        .setCustomId('genre_media_select')
+        .setCustomId(`genre_media_select_${statusSuffix}`)
         .setPlaceholder('Choose Anime or Manga')
         .addOptions(
             {
@@ -93,9 +95,10 @@ function buildMediaTypeMenu() {
     return new ActionRowBuilder().addComponents(menu);
 }
 
-function buildGenreMenu(mediaType) {
+function buildGenreMenu(mediaType, status) {
+    const statusSuffix = status || 'all';
     const menu = new StringSelectMenuBuilder()
-        .setCustomId(`genre_select_${mediaType}`)
+        .setCustomId(`genre_select_${mediaType}_${statusSuffix}`)
         .setPlaceholder(`Choose a ${mediaType} category`)
         .addOptions(GENRE_OPTIONS.map(option => ({
             label: option.label,
@@ -117,11 +120,6 @@ const client = new Client({
 
 // Small delay helper — used to avoid bursting AniList's rate limit (≈90 req/min)
 // when looping over many tracked/favorite items in checkUpdates().
-function sleep(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-// Helper لمنع تجاوز حد طلبات AniList
 function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
@@ -342,9 +340,6 @@ client.once('ready', async () => {
     } catch (error) {
         console.error('Error registering commands:', error);
     }
-async function checkUpdates() {
-    console.log('Checking for updates...');
-}
     // Background Tracker Loop (Checks every 30 minutes)
     setInterval(checkUpdates, 30 * 60 * 1000);
 });
@@ -352,16 +347,17 @@ async function checkUpdates() {
 client.on('interactionCreate', async interaction => {
    // 🎲 Genre recommendation menus & 🔘 Handle Interactive Buttons
 if (interaction.isStringSelectMenu()) {
-    if (interaction.customId === 'genre_media_select') {
+    if (interaction.customId.startsWith('genre_media_select_')) {
         const mediaType = interaction.values[0];
+        const status = interaction.customId.replace('genre_media_select_', '');
         return interaction.update({
             content: `📚 You chose **${mediaType === 'anime' ? 'Anime' : 'Manga'}**. Now choose a category:`,
-            components: [buildGenreMenu(mediaType)]
+            components: [buildGenreMenu(mediaType, status === 'all' ? null : status)]
         });
     }
 
     if (interaction.customId.startsWith('genre_select_')) {
-        const mediaType = interaction.customId.replace('genre_select_', '');
+        const [, , mediaType, statusValue = 'all'] = interaction.customId.split('_');
         const genreChoice = interaction.values[0];
         const genreDefinition = getGenreDefinition(genreChoice);
 
@@ -426,7 +422,7 @@ if (interaction.isStringSelectMenu()) {
                 type: mediaType === 'manga' ? 'MANGA' : 'ANIME',
                 genre: genreDefinition.filterType === 'genre' ? genreDefinition.apiValue : null,
                 tag: genreDefinition.filterType === 'tag' ? genreDefinition.apiValue : null,
-                status: genreChoice === 'ongoing' ? 'RELEASING' : null
+                status: statusValue === 'all' ? null : statusValue
             });
             mediaList = data?.Page?.media;
         } catch (err) {
@@ -437,8 +433,9 @@ if (interaction.isStringSelectMenu()) {
         if (!mediaList || mediaList.length === 0) {
             console.log(`AniList failed for genre [${genreDefinition.label}]. Attempting Fallback...`);
             try {
-                const isOngoing = genreChoice === 'ongoing';
-                const jikanData = await getAnimeJikan(genreDefinition.label, isOngoing);
+                const jikanData = mediaType === 'manga'
+                    ? await getMangaJikan(genreDefinition.label)
+                    : await getAnimeJikan(genreDefinition.label);
 
                 if (jikanData) {
                     const fallbackEmbed = new EmbedBuilder()
@@ -1921,11 +1918,12 @@ else if (commandName === 'manga') {
 }
     // 🎲 Genre Command
     else if (commandName === 'genre') {
-        await interaction.reply({
-            content: '📚 First choose what you want to discover:',
-            components: [buildMediaTypeMenu()],
-            ephemeral: true
-        });
+            const status = interaction.options.getString('status');
+            await interaction.reply({
+                content: '📚 First choose what you want to discover:',
+                components: [buildMediaTypeMenu(status)],
+                ephemeral: true
+            });
     }
 
    // 🎯 Track Command (Server Only + Emergency Fallback)
@@ -2265,6 +2263,11 @@ async function checkUpdates() {
         
         for (const item of tracked) {
             try {
+                const animeId = Number(item.animeId);
+                if (item.source === 'kitsu' || !Number.isInteger(animeId)) {
+                    continue;
+                }
+
                 const gqlQuery = `
                 query ($id: Int) {
                   Media (id: $id, type: ANIME) {
@@ -2278,7 +2281,7 @@ async function checkUpdates() {
                   }
                 }`;
 
-                const data = await fetchAniList(gqlQuery, { id: item.animeId });
+                const data = await fetchAniList(gqlQuery, { id: animeId });
                 const anime = data?.Media;
 
                 if (anime) {
@@ -2327,6 +2330,11 @@ async function checkUpdates() {
 
         for (const item of favorites) {
             try {
+                const animeId = Number(item.animeId);
+                if (!Number.isInteger(animeId)) {
+                    continue;
+                }
+
                 const gqlQuery = `
                 query ($id: Int) {
                   Media (id: $id, type: ANIME) {
@@ -2340,7 +2348,7 @@ async function checkUpdates() {
                   }
                 }`;
 
-                const data = await fetchAniList(gqlQuery, { id: item.animeId });
+                const data = await fetchAniList(gqlQuery, { id: animeId });
                 const anime = data?.Media;
 
                 if (anime) {
