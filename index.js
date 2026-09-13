@@ -3,7 +3,7 @@ const axios = require('axios');
 const http = require('http');
 const mongoose = require('mongoose');
 require('dotenv').config();
-const { getAnimeJikan, getMangaJikan } = require('./jikanFallback');
+const { getAnimeJikan, getMangaJikan, getCharacterJikan } = require('./jikanFallback');
 // Web server workaround to keep Render alive 24/7
 http.createServer((req, res) => {
     res.write("AniTracker is running!");
@@ -1541,6 +1541,9 @@ else if (commandName === 'character') {
         console.log(`AniList failed or returned no character for [${characterName}]. Attempting Backup...`);
         try {
             const jikanRes = await fetch(`https://api.jikan.moe/v4/characters?q=${encodeURIComponent(characterName)}&limit=1`);
+            if (!jikanRes.ok) {
+                throw new Error(`Jikan responded with ${jikanRes.status}`);
+            }
             const jikanData = await jikanRes.json();
             const jikanChar = jikanData?.data?.[0];
 
@@ -1592,6 +1595,34 @@ else if (commandName === 'character') {
             }
         } catch (backupErr) {
             console.error('Character Backup Fetch Error:', backupErr);
+        }
+
+        // 3️⃣ Final fallback (Kitsu API)
+        try {
+            const kitsuChar = await getCharacterJikan(characterName);
+            if (kitsuChar) {
+                const embed = new EmbedBuilder()
+                    .setTitle(`🎭 ${kitsuChar.name || characterName}`)
+                    .setURL(kitsuChar.url || 'https://kitsu.io')
+                    .setDescription(kitsuChar.about || 'No biography available.')
+                    .setImage(kitsuChar.image || 'https://i.imgur.com/AGv4yDI.png')
+                    .setColor('#9b59b6')
+                    .setFooter({ text: 'AniTracker • Character Search (Kitsu Backup)' });
+
+                const pinterestLink = `https://www.pinterest.com/search/pins/?q=${encodeURIComponent((kitsuChar.name || characterName) + ' anime fanart')}`;
+                const animeFanartBtn = new ButtonBuilder()
+                    .setLabel('🎨 Fanart')
+                    .setStyle(ButtonStyle.Link)
+                    .setURL(pinterestLink);
+
+                await interaction.editReply({
+                    embeds: [embed],
+                    components: [new ActionRowBuilder().addComponents(animeFanartBtn)]
+                });
+                return;
+            }
+        } catch (kitsuErr) {
+            console.error('Character Kitsu fallback error:', kitsuErr.message);
         }
 
         return await interaction.editReply(`❌ Sorry, no character found with the name **"${characterName}"** on AniList or Emergency Backup.`);
