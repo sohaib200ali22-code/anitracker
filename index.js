@@ -55,7 +55,8 @@ const ServerSettings = mongoose.model('ServerSettings', ServerSettingsSchema);
 // Manual age verification for the 18+ recommendation categories.
 const AgeVerificationSchema = new mongoose.Schema({
     userId: { type: String, unique: true },
-    verifiedAt: { type: Date, default: Date.now }
+    verifiedAt: { type: Date, default: Date.now },
+    verifiedBy: String
 });
 const AgeVerification = mongoose.model('AgeVerification', AgeVerificationSchema);
 
@@ -422,6 +423,9 @@ const allCommands = [
     new SlashCommandBuilder()
     .setName('settings')
     .setDescription('Open the AniTracker settings menu'),
+    new SlashCommandBuilder()
+    .setName('verification-status')
+    .setDescription('Check your 18+ content verification status'),
     new SlashCommandBuilder()
         .setName('untrack')
         .setDescription('Stop tracking an anime in this channel')
@@ -1219,6 +1223,35 @@ if (commandName === 'start') {
         }
     }
 }
+
+// 🔞 Show the current user's manual age-verification status
+else if (commandName === 'verification-status') {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+    try {
+        const verification = await AgeVerification.findOne({ userId: interaction.user.id }).lean();
+
+        if (!verification) {
+            return interaction.editReply({
+                content: '🔒 **Not verified for 18+ content.**\n\nAge verification must be approved manually by the bot owner. Join the support server to request a review:\nhttps://discord.gg/H4Af2y4RD8'
+            });
+        }
+
+        const verifiedAt = verification.verifiedAt
+            ? `<t:${Math.floor(new Date(verification.verifiedAt).getTime() / 1000)}:F>`
+            : 'an earlier date';
+
+        return interaction.editReply({
+            content: `✅ **You are verified for 18+ content.**\nApproved ${verifiedAt}.\n\nIf your access should be removed, contact the bot owner.`
+        });
+    } catch (err) {
+        console.error('verification-status command error:', err);
+        return interaction.editReply({
+            content: '❌ I could not check your verification status right now. Please try again later.'
+        });
+    }
+}
+
    // 🔞 Owner-controlled age verification (Approve)
 else if (commandName === 'verifyage') {
     const DEV_ID = process.env.DEV_USER_ID || '1326815636395003966';
@@ -1240,17 +1273,24 @@ else if (commandName === 'verifyage') {
     await interaction.deferReply({ flags: 64 });
 
     try {
-        // 2. Update DB with upsert
+        const existingVerification = await AgeVerification.findOne({ userId: user.id });
+        if (existingVerification) {
+            return interaction.editReply({
+                content: `ℹ️ **${user.tag}** is already age-verified.\nApproved ${existingVerification.verifiedAt ? `<t:${Math.floor(new Date(existingVerification.verifiedAt).getTime() / 1000)}:F>` : 'previously'}.\nNo changes were made.`
+            });
+        }
+
+        // 2. Save the owner's approval
         await AgeVerification.updateOne(
             { userId: user.id },
-            { $set: { userId: user.id, verifiedAt: new Date() } },
+            { $set: { userId: user.id, verifiedAt: new Date(), verifiedBy: interaction.user.id } },
             { upsert: true }
         );
 
         // 3. DM Notification
         let dmSent = true;
         try {
-            await user.send(`🎉 **Age Verification Approved!**\nYour account has been verified by the owner. You can now request and view 18+ adult genre recommendations linked to AniList.`);
+            await user.send(`🎉 **Age Verification Approved!**\nYour account has been manually verified by the bot owner. You can now access 18+ anime, manga, and genre recommendations.\nUse \`/verification-status\` any time to check your status.`);
         } catch (dmErr) {
             dmSent = false;
         }
@@ -1259,7 +1299,7 @@ else if (commandName === 'verifyage') {
         const dmStatusText = dmSent ? '📬 DM notification sent.' : '⚠️ Could not send DM (User DMs are disabled).';
         
         await interaction.editReply({
-            content: `✅ **${user.tag}** is now approved for 18+ AniList genre recommendations.\n${dmStatusText}`
+            content: `✅ **${user.tag}** is now approved for 18+ content.\nThey can check their status with \`/verification-status\`.\n${dmStatusText}`
         });
 
     } catch (err) {
@@ -1306,7 +1346,7 @@ else if (commandName === 'unverifyage') {
         // 4. DM Notification
         let dmSent = true;
         try {
-            await user.send(`🔒 **Age Verification Removed.**\nYour 18+ access status for AniList content has been revoked by the bot owner.`);
+            await user.send(`🔒 **Age Verification Removed.**\nYour 18+ access has been revoked by the bot owner. Adult anime, manga, and genre recommendations are locked again.`);
         } catch (dmErr) {
             dmSent = false;
         }
@@ -1927,7 +1967,8 @@ else if (commandName === 'help') {
                     '`/favorite`  Add anime and receive episode DMs\n' +
                     '`/unfavorite`  Remove an anime from favorites\n' +
                     '`/myfavorites`  View your saved favorites\n' +
-                    '`/settings`  Change timezone and notification preferences'
+                    '`/settings`  Change timezone and notification preferences\n' +
+                    '`/verification-status`  Check your 18+ access status'
             },
             { 
                 name: '📢 Server Tracking', 
@@ -2078,25 +2119,22 @@ else if (commandName === 'anime') {
     try {
         // التحقق من المحتوى المخصص للكبار (18+)
         if (anime.isAdult) {
-            const isNsfwChannel = interaction.channel?.nsfw === true;
             let isVerified = false;
 
-            if (!isNsfwChannel) {
-                try {
-                    isVerified = Boolean(await AgeVerification.exists({ userId: interaction.user.id }));
-                } catch (err) {
-                    console.error('Age verification lookup error:', err);
-                }
+            try {
+                isVerified = Boolean(await AgeVerification.exists({ userId: interaction.user.id }));
+            } catch (err) {
+                console.error('Age verification lookup error:', err);
+            }
 
-                if (!isVerified) {
-                    return interaction.editReply({
-                        content: `🔞 **This anime contains adult content (18+).**\n\n` +
-                                 `⚠️ To view this content, use this command in an **NSFW channel** or verify your age on our support server:\n` +
-                                 `https://discord.gg/H4Af2y4RD8`,
-                        embeds: [],
-                        components: []
-                    });
-                }
+            if (!isVerified) {
+                return interaction.editReply({
+                    content: `🔞 **This anime contains adult content (18+).**\n\n` +
+                             `⚠️ Access requires manual approval from the bot owner. Join the support server to request verification:\n` +
+                             `https://discord.gg/H4Af2y4RD8`,
+                    embeds: [],
+                    components: []
+                });
             }
         }
 
@@ -2395,25 +2433,22 @@ else if (commandName === 'manga') {
     try {
         // فحص المحتوى الخاص بالكبار (18+)
         if (manga.isAdult) {
-            const isNsfwChannel = interaction.channel?.nsfw === true;
             let isVerified = false;
 
-            if (!isNsfwChannel) {
-                try {
-                    isVerified = Boolean(await AgeVerification.exists({ userId: interaction.user.id }));
-                } catch (err) {
-                    console.error('Age verification lookup error:', err);
-                }
+            try {
+                isVerified = Boolean(await AgeVerification.exists({ userId: interaction.user.id }));
+            } catch (err) {
+                console.error('Age verification lookup error:', err);
+            }
 
-                if (!isVerified) {
-                    return interaction.editReply({
-                        content: `🔞 **This manga contains adult content (18+).**\n\n` +
-                                 `⚠️ To view this content, use this command in an **NSFW channel** or verify your age on our support server:\n` +
-                                 `https://discord.gg/H4Af2y4RD8`,
-                        embeds: [],
-                        components: []
-                    });
-                }
+            if (!isVerified) {
+                return interaction.editReply({
+                    content: `🔞 **This manga contains adult content (18+).**\n\n` +
+                             `⚠️ Access requires manual approval from the bot owner. Join the support server to request verification:\n` +
+                             `https://discord.gg/H4Af2y4RD8`,
+                    embeds: [],
+                    components: []
+                });
             }
         }
 
