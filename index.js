@@ -508,6 +508,7 @@ const OWNER_COMMAND_NAMES = new Set([
     'servers',
     'eval',
     'broadcast',
+    'verifyage',
     'unverifyage',
     'maintenance-dm',
     'bot-status',
