@@ -1851,41 +1851,47 @@ else if (commandName === 'myfavorites') {
 }
     // 📖 Help Command
 else if (commandName === 'help') {
+    const canSeeSetup = interaction.guildId && canRunServerSetup(interaction);
     const embed = new EmbedBuilder()
-        .setTitle('🤖 AniTracker - Commands Guide')
-        .setDescription('Welcome to **AniTracker**! Here is the categorized list of all available commands:')
+        .setTitle('🤖 AniTracker Command Center')
+        .setDescription('Search, discover, track, and personalize your anime experience.\nUse the buttons below for support or developer contact.')
         .addFields(
             { 
-                name: '🔍 Search & Discovery', 
+                name: '🔎 Discover', 
                 value: 
-                    '`/anime <title>` - Search anime details & quick actions\n' +
-                    '`/manga <title>` - Search manga details\n' +
-                    '`/character <name>` - Search for anime characters\n' +
-                    '`/genre` - Get recommendations by category/genre\n' +
-                    '`/schedule` - View today\'s anime release schedule'
+                    '`/anime`  Search anime details and quick actions\n' +
+                    '`/manga`  Search manga details\n' +
+                    '`/character`  Search anime characters\n' +
+                    '`/genre`  Get recommendations by category\n' +
+                    '`/schedule`  View today\'s release schedule'
             },
             { 
-                name: '💖 Personal Favorites (DMs)', 
+                name: '⭐ Personal Favorites', 
                 value: 
-                    '`/favorite <title>` - Add anime to your personal favorites\n' +
-                    '`/unfavorite <title>` - Remove anime from favorites\n' +
-                    '`/myfavorites` - View your personal favorites list'
+                    '`/favorite`  Add anime and receive episode DMs\n' +
+                    '`/unfavorite`  Remove an anime from favorites\n' +
+                    '`/myfavorites`  View your saved favorites\n' +
+                    '`/settings`  Change timezone and notification preferences'
             },
             { 
-                name: '📢 Server Channel Tracking', 
+                name: '📢 Server Tracking', 
                 value: 
-                    '`/track <title>` - Track anime episode alerts in this channel\n' +
-                    '`/untrack <title>` - Stop tracking an anime in this channel\n' +
-                    '`/mytracked` - Show all tracked anime in this server'
+                    '`/track`  Track anime episode alerts\n' +
+                    '`/untrack`  Stop tracking an anime\n' +
+                    '`/mytracked`  View tracked anime'
             },
             { 
-                name: '🚀 Utility', 
-                value: '`/start` - Show the welcome guide & overview\n`/help` - Show this commands list' 
+                name: '🧭 Getting Started', 
+                value: 
+                    '`/start`  Open the welcome guide\n' +
+                    '`/help`  Show this command guide' +
+                    (canSeeSetup ? '\n`/setup`  Configure permissions and the alert channel' : '')
             }
         )
         .setColor('#9b59b6')
         .setThumbnail(client.user.displayAvatarURL())
-        .setFooter({ text: 'AniTracker • Need support? Click the links below!' });
+        .setFooter({ text: 'AniTracker • Times use your saved timezone' })
+        .setTimestamp();
 
     const supportBtn = new ButtonBuilder()
         .setLabel('💬 Support Server')
