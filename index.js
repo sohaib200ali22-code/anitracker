@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags, StringSelectMenuBuilder, ActivityType, PermissionFlagsBits, ChannelType } = require('discord.js');
+const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, ChannelSelectMenuBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, ActivityType, PermissionFlagsBits, ChannelType } = require('discord.js');
 const axios = require('axios');
 const http = require('http');
 const mongoose = require('mongoose');
@@ -121,6 +121,56 @@ function buildGenreMenu(mediaType, status) {
         })));
 
     return new ActionRowBuilder().addComponents(menu);
+}
+
+function buildSettingsMenu() {
+    const menu = new StringSelectMenuBuilder()
+        .setCustomId('settings_select')
+        .setPlaceholder('Choose a setting to change')
+        .addOptions(
+            {
+                label: 'Timezone',
+                value: 'timezone',
+                description: 'Set the timezone used for your schedule'
+            },
+            {
+                label: 'Alert Channel',
+                value: 'alert-channel',
+                description: 'Choose where server episode alerts are sent'
+            },
+            {
+                label: 'Notifications',
+                value: 'notifications',
+                description: 'Enable or disable DM and server alerts'
+            }
+        );
+
+    return new ActionRowBuilder().addComponents(menu);
+}
+
+function buildNotificationButtons() {
+    return [
+        new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+                .setCustomId('settings_favorite_dms_on')
+                .setLabel('Enable Favorite DMs')
+                .setStyle(ButtonStyle.Success),
+            new ButtonBuilder()
+                .setCustomId('settings_favorite_dms_off')
+                .setLabel('Disable Favorite DMs')
+                .setStyle(ButtonStyle.Danger)
+        ),
+        new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+                .setCustomId('settings_server_alerts_on')
+                .setLabel('Enable Server Alerts')
+                .setStyle(ButtonStyle.Success),
+            new ButtonBuilder()
+                .setCustomId('settings_server_alerts_off')
+                .setLabel('Disable Server Alerts')
+                .setStyle(ButtonStyle.Danger)
+        )
+    ];
 }
 
 // FIX: removed GatewayIntentBits.GuildPresences — it's a privileged intent that
@@ -275,40 +325,7 @@ const commands = [
     .setDescription('📅 Displays today\'s anime release schedule!'),
     new SlashCommandBuilder()
     .setName('settings')
-    .setDescription('Manage your AniTracker preferences')
-    .addSubcommand(subcommand =>
-        subcommand
-            .setName('timezone')
-            .setDescription('Set your timezone for schedules and alerts')
-            .addStringOption(option =>
-                option
-                    .setName('timezone')
-                    .setDescription('IANA timezone, for example Africa/Cairo or America/New_York')
-                    .setRequired(true)))
-    .addSubcommand(subcommand =>
-        subcommand
-            .setName('alert-channel')
-            .setDescription('Set the server channel for tracked anime alerts')
-            .addChannelOption(option =>
-                option
-                    .setName('channel')
-                    .setDescription('Text channel that should receive episode alerts')
-                    .addChannelTypes(ChannelType.GuildText)
-                    .setRequired(true)))
-    .addSubcommand(subcommand =>
-        subcommand
-            .setName('notifications')
-            .setDescription('Enable or disable your favorite anime DM notifications')
-            .addBooleanOption(option =>
-                option
-                    .setName('favorite-dms')
-                    .setDescription('Receive direct messages when favorite anime release episodes')
-                    .setRequired(false))
-            .addBooleanOption(option =>
-                option
-                    .setName('server-alerts')
-                    .setDescription('Receive tracked anime alerts in this server')
-                    .setRequired(false))),
+    .setDescription('Open the AniTracker settings menu'),
     new SlashCommandBuilder()
         .setName('untrack')
         .setDescription('Stop tracking an anime in this channel')
@@ -416,6 +433,55 @@ client.on('interactionCreate', async interaction => {
    updateChecker = runUpdateChecks;
    // 🎲 Genre recommendation menus & 🔘 Handle Interactive Buttons
 if (interaction.isStringSelectMenu()) {
+    if (interaction.customId === 'settings_select') {
+        const setting = interaction.values[0];
+
+        if (setting === 'timezone') {
+            const modal = new ModalBuilder()
+                .setCustomId('settings_timezone_modal')
+                .setTitle('Set Your Timezone');
+            const timezoneInput = new TextInputBuilder()
+                .setCustomId('timezone')
+                .setLabel('IANA timezone')
+                .setPlaceholder('Africa/Cairo or America/New_York')
+                .setStyle(TextInputStyle.Short)
+                .setRequired(true);
+            modal.addComponents(new ActionRowBuilder().addComponents(timezoneInput));
+            return interaction.showModal(modal);
+        }
+
+        if (setting === 'alert-channel') {
+            if (!interaction.guildId) {
+                return interaction.update({
+                    content: '❌ Alert channel settings can only be changed inside a server.',
+                    components: []
+                });
+            }
+            if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageChannels)) {
+                return interaction.update({
+                    content: '❌ You need **Manage Channels** permission to change the server alert channel.',
+                    components: []
+                });
+            }
+
+            const channelMenu = new ChannelSelectMenuBuilder()
+                .setCustomId('settings_alert_channel_select')
+                .setPlaceholder('Choose the alert channel')
+                .addChannelTypes(ChannelType.GuildText)
+                .setMinValues(1)
+                .setMaxValues(1);
+            return interaction.update({
+                content: '📢 Choose the server channel for tracked anime alerts:',
+                components: [new ActionRowBuilder().addComponents(channelMenu)]
+            });
+        }
+
+        return interaction.update({
+            content: '🔔 Choose which notification type to change:',
+            components: buildNotificationButtons()
+        });
+    }
+
     if (interaction.customId.startsWith('genre_media_select_')) {
         const mediaType = interaction.values[0];
         const status = interaction.customId.replace('genre_media_select_', '');
@@ -600,7 +666,88 @@ if (interaction.isStringSelectMenu()) {
     return;
 }
 
+if (interaction.isChannelSelectMenu() && interaction.customId === 'settings_alert_channel_select') {
+    if (!interaction.guildId || !interaction.memberPermissions?.has(PermissionFlagsBits.ManageChannels)) {
+        return interaction.update({
+            content: '❌ You need **Manage Channels** permission to change the server alert channel.',
+            components: []
+        });
+    }
+
+    const channelId = interaction.values[0];
+    await ServerSettings.findOneAndUpdate(
+        { guildId: interaction.guildId },
+        { $set: { alertChannelId: channelId, serverAlertsEnabled: true } },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+    await TrackedItem.updateMany(
+        { guildId: interaction.guildId },
+        { $set: { channelId } }
+    );
+
+    return interaction.update({
+        content: `✅ Server episode alerts will now be sent to <#${channelId}>.`,
+        components: []
+    });
+}
+
+if (interaction.isModalSubmit() && interaction.customId === 'settings_timezone_modal') {
+    const timezone = interaction.fields.getTextInputValue('timezone').trim();
+    if (!isValidTimezone(timezone)) {
+        return interaction.reply({
+            content: '❌ Invalid timezone. Use an IANA timezone such as `Africa/Cairo`, `America/New_York`, or `Europe/London`.',
+            flags: MessageFlags.Ephemeral
+        });
+    }
+
+    await UserSettings.findOneAndUpdate(
+        { userId: interaction.user.id },
+        { $set: { timezone } },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+
+    return interaction.reply({
+        content: `✅ Your timezone is now set to \`${timezone}\`.`,
+        flags: MessageFlags.Ephemeral
+    });
+}
+
 if (interaction.isButton()) {
+    if (interaction.customId.startsWith('settings_')) {
+        const [, setting, , state] = interaction.customId.split('_');
+        const enabled = state === 'on';
+
+        if (setting === 'favorite') {
+            await UserSettings.findOneAndUpdate(
+                { userId: interaction.user.id },
+                { $set: { favoriteDmsEnabled: enabled } },
+                { upsert: true, new: true, setDefaultsOnInsert: true }
+            );
+            return interaction.update({
+                content: `✅ Favorite anime DM notifications are now **${enabled ? 'enabled' : 'disabled'}**.`,
+                components: []
+            });
+        }
+
+        if (setting === 'server') {
+            if (!interaction.guildId || !interaction.memberPermissions?.has(PermissionFlagsBits.ManageChannels)) {
+                return interaction.update({
+                    content: '❌ You need **Manage Channels** permission to change server notifications.',
+                    components: []
+                });
+            }
+            await ServerSettings.findOneAndUpdate(
+                { guildId: interaction.guildId },
+                { $set: { serverAlertsEnabled: enabled } },
+                { upsert: true, new: true, setDefaultsOnInsert: true }
+            );
+            return interaction.update({
+                content: `✅ Server episode alerts are now **${enabled ? 'enabled' : 'disabled'}**.`,
+                components: []
+            });
+        }
+    }
+
     if (interaction.customId.startsWith('track_btn_')) {
         if (!interaction.guildId) {
             return interaction.reply({
@@ -982,105 +1129,13 @@ else if (commandName === 'unverifyage') {
         });
     }
 }
-   // 📅 Today's Anime Schedule Command
+// 📅 Today's Anime Schedule Command
 else if (commandName === 'settings') {
-const subcommand = interaction.options.getSubcommand();
-
-if (subcommand === 'timezone') {
-    const timezone = interaction.options.getString('timezone').trim();
-    if (!isValidTimezone(timezone)) {
-        return interaction.reply({
-            content: '❌ Invalid timezone. Use an IANA timezone such as `Africa/Cairo`, `America/New_York`, or `Europe/London`.',
-            flags: MessageFlags.Ephemeral
-        });
-    }
-
-    await UserSettings.findOneAndUpdate(
-        { userId: interaction.user.id },
-        { $set: { timezone } },
-        { upsert: true, new: true, setDefaultsOnInsert: true }
-    );
-
-    return interaction.reply({
-        content: `✅ Your timezone is now set to \`${timezone}\`.`,
+    await interaction.reply({
+        content: '⚙️ Choose a setting to change:',
+        components: [buildSettingsMenu()],
         flags: MessageFlags.Ephemeral
     });
-}
-
-if (subcommand === 'notifications') {
-    const favoriteDmsEnabled = interaction.options.getBoolean('favorite-dms');
-    const serverAlertsEnabled = interaction.options.getBoolean('server-alerts');
-
-    if (favoriteDmsEnabled === null && serverAlertsEnabled === null) {
-        return interaction.reply({
-            content: '❌ Choose at least one notification setting to change.',
-            flags: MessageFlags.Ephemeral
-        });
-    }
-
-    if (favoriteDmsEnabled !== null) {
-        await UserSettings.findOneAndUpdate(
-            { userId: interaction.user.id },
-            { $set: { favoriteDmsEnabled } },
-            { upsert: true, new: true, setDefaultsOnInsert: true }
-        );
-    }
-
-    if (serverAlertsEnabled !== null) {
-        if (!interaction.guildId) {
-            return interaction.reply({
-                content: '❌ Server alert settings can only be changed inside a server.',
-                flags: MessageFlags.Ephemeral
-            });
-        }
-        if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageChannels)) {
-            return interaction.reply({
-                content: '❌ You need **Manage Channels** permission to change server notifications.',
-                flags: MessageFlags.Ephemeral
-            });
-        }
-        await ServerSettings.findOneAndUpdate(
-            { guildId: interaction.guildId },
-            { $set: { serverAlertsEnabled } },
-            { upsert: true, new: true, setDefaultsOnInsert: true }
-        );
-    }
-
-    return interaction.reply({
-        content: '✅ Notification settings updated.',
-        flags: MessageFlags.Ephemeral
-    });
-}
-
-if (!interaction.guildId) {
-    return interaction.reply({
-        content: '❌ Alert channel settings can only be changed inside a server.',
-        flags: MessageFlags.Ephemeral
-    });
-}
-
-if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageChannels)) {
-    return interaction.reply({
-        content: '❌ You need **Manage Channels** permission to change the server alert channel.',
-        flags: MessageFlags.Ephemeral
-    });
-}
-
-const channel = interaction.options.getChannel('channel');
-await ServerSettings.findOneAndUpdate(
-    { guildId: interaction.guildId },
-    { $set: { alertChannelId: channel.id, serverAlertsEnabled: true } },
-    { upsert: true, new: true, setDefaultsOnInsert: true }
-);
-await TrackedItem.updateMany(
-    { guildId: interaction.guildId },
-    { $set: { channelId: channel.id } }
-);
-
-return interaction.reply({
-    content: `✅ Server episode alerts will now be sent to <#${channel.id}>.`,
-    flags: MessageFlags.Ephemeral
-});
 }
 // 📅 Today's Anime Schedule Command
 else if (commandName === 'schedule') {
