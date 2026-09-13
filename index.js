@@ -89,6 +89,14 @@ async function getAvailableGenres(userId) {
 function getGenreDefinition(value) {
     return GENRE_OPTIONS.find(option => option.value === value);
 }
+
+function canRunServerSetup(interaction) {
+    const botOwnerId = process.env.DEV_USER_ID || '1326815636395003966';
+    return interaction.user.id === botOwnerId
+        || interaction.user.id === interaction.guild?.ownerId
+        || interaction.memberPermissions?.has(PermissionFlagsBits.Administrator);
+}
+
 function buildMediaTypeMenu(status) {
     const statusSuffix = status || 'all';
     const menu = new StringSelectMenuBuilder()
@@ -390,8 +398,7 @@ const commands = [
     .setDescription('📅 Displays today\'s anime release schedule!'),
     new SlashCommandBuilder()
         .setName('setup')
-        .setDescription('Set up AniTracker permissions and the server alert channel')
-        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+        .setDescription('Set up AniTracker permissions and the server alert channel'),
     new SlashCommandBuilder()
     .setName('settings')
     .setDescription('Open the AniTracker settings menu'),
@@ -761,9 +768,9 @@ if (interaction.isChannelSelectMenu() && interaction.customId === 'settings_aler
 }
 
 if (interaction.isChannelSelectMenu() && interaction.customId === 'setup_alert_channel_select') {
-    if (!interaction.guildId || !interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
+    if (!interaction.guildId || !canRunServerSetup(interaction)) {
         return interaction.update({
-            content: '❌ Only server administrators can finish AniTracker setup.',
+            content: '❌ Only the server owner, an administrator, or the bot owner can finish AniTracker setup.',
             components: []
         });
     }
@@ -1280,10 +1287,12 @@ else if (commandName === 'setup') {
         });
     }
     if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
-        return interaction.reply({
-            content: '❌ Only server administrators can run `/setup`.',
-            flags: MessageFlags.Ephemeral
-        });
+        if (!canRunServerSetup(interaction)) {
+            return interaction.reply({
+                content: '❌ Only the server owner, an administrator, or the bot owner can run `/setup`.',
+                flags: MessageFlags.Ephemeral
+            });
+        }
     }
 
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
