@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags, StringSelectMenuBuilder, ActivityType, PermissionFlagsBits } = require('discord.js');
+const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags, StringSelectMenuBuilder, ActivityType, PermissionFlagsBits, ChannelType } = require('discord.js');
 const axios = require('axios');
 const http = require('http');
 const mongoose = require('mongoose');
@@ -35,6 +35,20 @@ const FavoriteSchema = new mongoose.Schema({
     lastEpisodes: Number
 });
 const FavoriteItem = mongoose.model('FavoriteItem', FavoriteSchema);
+
+const UserSettingsSchema = new mongoose.Schema({
+    userId: { type: String, unique: true },
+    timezone: { type: String, default: 'UTC' },
+    favoriteDmsEnabled: { type: Boolean, default: true }
+});
+const UserSettings = mongoose.model('UserSettings', UserSettingsSchema);
+
+const ServerSettingsSchema = new mongoose.Schema({
+    guildId: { type: String, unique: true },
+    alertChannelId: String,
+    serverAlertsEnabled: { type: Boolean, default: true }
+});
+const ServerSettings = mongoose.model('ServerSettings', ServerSettingsSchema);
 
 // Manual age verification for the 18+ recommendation categories.
 const AgeVerificationSchema = new mongoose.Schema({
@@ -160,6 +174,20 @@ function getAiredEpisodes(anime) {
     return anime.episodes || 0;
 }
 
+function isValidTimezone(timezone) {
+    try {
+        new Intl.DateTimeFormat('en-US', { timeZone: timezone }).format();
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+async function getServerAlertChannelId(guildId, fallbackChannelId) {
+    const settings = await ServerSettings.findOne({ guildId }).lean();
+    return settings?.alertChannelId || fallbackChannelId;
+}
+
 module.exports = {
     fetchAniList,
     sleep,
@@ -245,6 +273,42 @@ const commands = [
     new SlashCommandBuilder()
     .setName('schedule')
     .setDescription('📅 Displays today\'s anime release schedule!'),
+    new SlashCommandBuilder()
+    .setName('settings')
+    .setDescription('Manage your AniTracker preferences')
+    .addSubcommand(subcommand =>
+        subcommand
+            .setName('timezone')
+            .setDescription('Set your timezone for schedules and alerts')
+            .addStringOption(option =>
+                option
+                    .setName('timezone')
+                    .setDescription('IANA timezone, for example Africa/Cairo or America/New_York')
+                    .setRequired(true)))
+    .addSubcommand(subcommand =>
+        subcommand
+            .setName('alert-channel')
+            .setDescription('Set the server channel for tracked anime alerts')
+            .addChannelOption(option =>
+                option
+                    .setName('channel')
+                    .setDescription('Text channel that should receive episode alerts')
+                    .addChannelTypes(ChannelType.GuildText)
+                    .setRequired(true)))
+    .addSubcommand(subcommand =>
+        subcommand
+            .setName('notifications')
+            .setDescription('Enable or disable your favorite anime DM notifications')
+            .addBooleanOption(option =>
+                option
+                    .setName('favorite-dms')
+                    .setDescription('Receive direct messages when favorite anime release episodes')
+                    .setRequired(false))
+            .addBooleanOption(option =>
+                option
+                    .setName('server-alerts')
+                    .setDescription('Receive tracked anime alerts in this server')
+                    .setRequired(false))),
     new SlashCommandBuilder()
         .setName('untrack')
         .setDescription('Stop tracking an anime in this channel')
@@ -587,7 +651,7 @@ if (interaction.isButton()) {
 
         await TrackedItem.create({
             guildId: interaction.guildId,
-            channelId: interaction.channelId,
+            channelId: await getServerAlertChannelId(interaction.guildId, interaction.channelId),
             animeId: anime.id,
             animeTitle: animeTitle,
             lastEpisodes: anime.episodes || 0,
@@ -919,10 +983,112 @@ else if (commandName === 'unverifyage') {
     }
 }
    // 📅 Today's Anime Schedule Command
+else if (commandName === 'settings') {
+const subcommand = interaction.options.getSubcommand();
+
+if (subcommand === 'timezone') {
+    const timezone = interaction.options.getString('timezone').trim();
+    if (!isValidTimezone(timezone)) {
+        return interaction.reply({
+            content: '❌ Invalid timezone. Use an IANA timezone such as `Africa/Cairo`, `America/New_York`, or `Europe/London`.',
+            flags: MessageFlags.Ephemeral
+        });
+    }
+
+    await UserSettings.findOneAndUpdate(
+        { userId: interaction.user.id },
+        { $set: { timezone } },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+
+    return interaction.reply({
+        content: `✅ Your timezone is now set to \`${timezone}\`.`,
+        flags: MessageFlags.Ephemeral
+    });
+}
+
+if (subcommand === 'notifications') {
+    const favoriteDmsEnabled = interaction.options.getBoolean('favorite-dms');
+    const serverAlertsEnabled = interaction.options.getBoolean('server-alerts');
+
+    if (favoriteDmsEnabled === null && serverAlertsEnabled === null) {
+        return interaction.reply({
+            content: '❌ Choose at least one notification setting to change.',
+            flags: MessageFlags.Ephemeral
+        });
+    }
+
+    if (favoriteDmsEnabled !== null) {
+        await UserSettings.findOneAndUpdate(
+            { userId: interaction.user.id },
+            { $set: { favoriteDmsEnabled } },
+            { upsert: true, new: true, setDefaultsOnInsert: true }
+        );
+    }
+
+    if (serverAlertsEnabled !== null) {
+        if (!interaction.guildId) {
+            return interaction.reply({
+                content: '❌ Server alert settings can only be changed inside a server.',
+                flags: MessageFlags.Ephemeral
+            });
+        }
+        if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageChannels)) {
+            return interaction.reply({
+                content: '❌ You need **Manage Channels** permission to change server notifications.',
+                flags: MessageFlags.Ephemeral
+            });
+        }
+        await ServerSettings.findOneAndUpdate(
+            { guildId: interaction.guildId },
+            { $set: { serverAlertsEnabled } },
+            { upsert: true, new: true, setDefaultsOnInsert: true }
+        );
+    }
+
+    return interaction.reply({
+        content: '✅ Notification settings updated.',
+        flags: MessageFlags.Ephemeral
+    });
+}
+
+if (!interaction.guildId) {
+    return interaction.reply({
+        content: '❌ Alert channel settings can only be changed inside a server.',
+        flags: MessageFlags.Ephemeral
+    });
+}
+
+if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageChannels)) {
+    return interaction.reply({
+        content: '❌ You need **Manage Channels** permission to change the server alert channel.',
+        flags: MessageFlags.Ephemeral
+    });
+}
+
+const channel = interaction.options.getChannel('channel');
+await ServerSettings.findOneAndUpdate(
+    { guildId: interaction.guildId },
+    { $set: { alertChannelId: channel.id, serverAlertsEnabled: true } },
+    { upsert: true, new: true, setDefaultsOnInsert: true }
+);
+await TrackedItem.updateMany(
+    { guildId: interaction.guildId },
+    { $set: { channelId: channel.id } }
+);
+
+return interaction.reply({
+    content: `✅ Server episode alerts will now be sent to <#${channel.id}>.`,
+    flags: MessageFlags.Ephemeral
+});
+}
+// 📅 Today's Anime Schedule Command
 else if (commandName === 'schedule') {
     await interaction.deferReply();
 
     try {
+        const userSettings = await UserSettings.findOne({ userId: interaction.user.id }).lean();
+        const timezone = userSettings?.timezone || 'UTC';
         // 1️⃣ حساب بداية ونهاية اليوم بتوقيت UTC
         const now = new Date();
         const startOfDay = Math.floor(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0) / 1000);
@@ -986,7 +1152,11 @@ else if (commandName === 'schedule') {
         // 4️⃣ تنسيق القائمة والقطع الذكي لمنع تخريب الـ Markdown
         let descriptionLines = [];
         for (const item of schedules) {
-            const timeString = `<t:${item.airingAt}:t>`;
+            const timeString = new Intl.DateTimeFormat('en-US', {
+                timeZone: timezone,
+                dateStyle: 'short',
+                timeStyle: 'short'
+            }).format(new Date(item.airingAt * 1000));
             const line = `• **Ep ${item.episode}** - **${item.title}** at ${timeString}`;
             
             // تحقق إن إجمالي الحروف متعداش 3800 حرف قبل الإضافة
@@ -1002,7 +1172,7 @@ else if (commandName === 'schedule') {
             .setColor('#ff69b4')
             .setTitle('📅 Today\'s Anime Schedule')
             .setDescription(descriptionLines.join('\n'))
-            .setFooter({ text: `Total scheduled: ${schedules.length} • Powered by ${sourceName}` })
+            .setFooter({ text: `Total scheduled: ${schedules.length} • Powered by ${sourceName} • Your timezone: ${timezone}` })
             .setTimestamp();
 
         await interaction.editReply({ embeds: [embed] });
@@ -1998,7 +2168,7 @@ else if (commandName === 'track') {
 
                 await TrackedItem.create({
                     guildId: interaction.guildId,
-                    channelId: interaction.channelId,
+                    channelId: await getServerAlertChannelId(interaction.guildId, interaction.channelId),
                     animeId: kitsuId,
                     animeTitle: animeTitle,
                     lastEpisodes: attr.episodeCount || 0,
@@ -2051,7 +2221,7 @@ else if (commandName === 'track') {
 
         await TrackedItem.create({
             guildId: interaction.guildId,
-            channelId: interaction.channelId,
+            channelId: await getServerAlertChannelId(interaction.guildId, interaction.channelId),
             animeId: animeId,
             animeTitle: animeTitle,
             lastEpisodes: animeEpisodes,
@@ -2294,6 +2464,11 @@ async function runUpdateChecks() {
                     const lastEps = item.lastEpisodes || 0;
 
                     if (currentEps > lastEps) {
+                        const serverSettings = await ServerSettings.findOne({ guildId: item.guildId }).lean();
+                        if (serverSettings?.serverAlertsEnabled === false) {
+                            continue;
+                        }
+
                         const channel = await client.channels.fetch(item.channelId).catch(() => null);
 
                         if (channel) {
@@ -2361,6 +2536,11 @@ async function runUpdateChecks() {
                     const lastEps = item.lastEpisodes || 0;
 
                     if (currentEps > lastEps) {
+                        const userSettings = await UserSettings.findOne({ userId: item.userId }).lean();
+                        if (userSettings?.favoriteDmsEnabled === false) {
+                            continue;
+                        }
+
                         const user = await client.users.fetch(item.userId).catch(() => null);
 
                         if (user) {
