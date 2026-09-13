@@ -124,6 +124,10 @@ function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+let updateChecker = async () => {
+    console.warn('Update checker is not ready yet.');
+};
+
 // دالة جلب البيانات عبر Vercel Proxy
 async function fetchAniList(query, variables) {
     try {
@@ -341,10 +345,11 @@ client.once('ready', async () => {
         console.error('Error registering commands:', error);
     }
     // Background Tracker Loop (Checks every 30 minutes)
-    setInterval(checkUpdates, 30 * 60 * 1000);
+    setInterval(() => updateChecker(), 30 * 60 * 1000);
 });
 
 client.on('interactionCreate', async interaction => {
+   updateChecker = runUpdateChecks;
    // 🎲 Genre recommendation menus & 🔘 Handle Interactive Buttons
 if (interaction.isStringSelectMenu()) {
     if (interaction.customId.startsWith('genre_media_select_')) {
@@ -2215,7 +2220,7 @@ else if (commandName === 'testalert') {
         console.log(`[Dev Action]: ${interaction.user.tag} triggered manual checkUpdates()...`);
         
         // 2️⃣ تشغيل الفحص التلقائي (وجمع النتيجة لو الدالة بترجع إحصائيات)
-        const stats = await checkUpdates(); 
+        const stats = await runUpdateChecks(); 
         const executionTime = ((Date.now() - startTime) / 1000).toFixed(2);
 
         // 3️⃣ تجهيز Embed توضيحي للمطور بالتفاصيل
@@ -2256,7 +2261,7 @@ else if (commandName === 'testalert') {
     }
 }
 // 🔄 Automated Episode Checker Function
-async function checkUpdates() {
+async function runUpdateChecks() {
     try {
         // 1. Check Channel Tracked Items (Server Trackers)
         const tracked = await TrackedItem.find({});
