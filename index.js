@@ -30,9 +30,10 @@ const TrackedItem = mongoose.model('TrackedItem', TrackSchema);
 // MongoDB Schema for Personal Favorites (DM Alerts)
 const FavoriteSchema = new mongoose.Schema({
     userId: String,
-    animeId: Number,
+    animeId: String,
     animeTitle: String,
-    lastEpisodes: Number
+    lastEpisodes: Number,
+    source: { type: String, default: 'anilist' }
 });
 const FavoriteItem = mongoose.model('FavoriteItem', FavoriteSchema);
 
@@ -234,6 +235,27 @@ async function fetchAniList(query, variables) {
         console.error('Proxy Fetch Error:', error.response ? error.response.status : error.message);
         return null;
     }
+}
+
+async function fetchKitsuAnime(id) {
+    const response = await fetch(`https://kitsu.io/api/edge/anime/${encodeURIComponent(id)}`);
+    if (!response.ok) {
+        return null;
+    }
+
+    const data = await response.json();
+    const anime = data?.data;
+    if (!anime?.attributes) {
+        return null;
+    }
+
+    return {
+        title: anime.attributes.canonicalTitle || anime.attributes.titles?.en,
+        episodes: anime.attributes.episodeCount || 0,
+        status: anime.attributes.status?.toUpperCase() || 'UNKNOWN',
+        image: anime.attributes.posterImage?.large,
+        siteUrl: `https://kitsu.io/anime/${anime.id}`
+    };
 }
 
 // Helper لمعرفة عدد الحلقات المعروضة بالفعل
@@ -493,7 +515,7 @@ const commands = allCommands.filter(command => !OWNER_COMMAND_NAMES.has(command.
 const ownerCommands = allCommands.filter(command => OWNER_COMMAND_NAMES.has(command.name));
 const BOT_OWNER_ID = process.env.DEV_USER_ID || '1326815636395003966';
 
-client.once('ready', async () => {
+client.once('clientReady', async () => {
     console.log(`Logged in as ${client.user.tag}!`);
 
     client.user.setActivity('AniList for new episodes 📺', { type: ActivityType.Watching });
@@ -1022,9 +1044,10 @@ if (interaction.isButton()) {
 
         await FavoriteItem.create({
             userId: interaction.user.id,
-            animeId: anime.id,
+            animeId: String(anime.id),
             animeTitle: animeTitle,
-            lastEpisodes: anime.episodes || 0
+            lastEpisodes: anime.episodes || 0,
+            source: 'anilist'
         });
 
         await interaction.editReply({ content: `⭐ Added **[${animeTitle}](${anime.siteUrl})** to your personal favorites! You will receive direct messages (DMs) when new episodes arrive.` });
@@ -1658,7 +1681,7 @@ else if (commandName === 'favorite') {
 
             if (kitsuAnime) {
                 const attr = kitsuAnime.attributes;
-                const kitsuId = parseInt(kitsuAnime.id); // Numerical ID fallback
+                const kitsuId = `kitsu_${kitsuAnime.id}`;
                 const animeTitle = attr.canonicalTitle || attr.titles?.en || searchQuery;
                 const siteUrl = `https://kitsu.io/anime/${kitsuAnime.id}`;
 
@@ -1672,7 +1695,8 @@ else if (commandName === 'favorite') {
                     userId: interaction.user.id,
                     animeId: kitsuId,
                     animeTitle: animeTitle,
-                    lastEpisodes: attr.episodeCount || 0
+                    lastEpisodes: attr.episodeCount || 0,
+                    source: 'kitsu'
                 });
 
                 await interaction.editReply(`⭐ Added **[${animeTitle}](${siteUrl})** to your personal favorites! You will receive DMs when new episodes drop.`);
@@ -1706,9 +1730,10 @@ else if (commandName === 'favorite') {
 
         await FavoriteItem.create({
             userId: interaction.user.id,
-            animeId: anime.id,
+            animeId: String(anime.id),
             animeTitle: animeTitle,
-            lastEpisodes: anime.episodes || 0
+            lastEpisodes: anime.episodes || 0,
+            source: 'anilist'
         });
 
         await interaction.editReply(`⭐ Added **[${animeTitle}](${anime.siteUrl})** to your personal favorites! You will receive DMs when new episodes drop.`);
@@ -1759,7 +1784,7 @@ else if (commandName === 'unfavorite') {
             const kitsuAnime = kitsuData?.data?.[0];
 
             if (kitsuAnime) {
-                const kitsuId = parseInt(kitsuAnime.id);
+                const kitsuId = `kitsu_${kitsuAnime.id}`;
                 const animeTitle = kitsuAnime.attributes?.canonicalTitle || searchQuery;
 
                 const deleted = await FavoriteItem.findOneAndDelete({ userId: interaction.user.id, animeId: kitsuId });
@@ -1786,7 +1811,7 @@ else if (commandName === 'unfavorite') {
     // 4. Remove using AniList ID
     try {
         const animeTitle = (anime.title && (anime.title.english || anime.title.romaji)) || searchQuery;
-        const deleted = await FavoriteItem.findOneAndDelete({ userId: interaction.user.id, animeId: anime.id });
+        const deleted = await FavoriteItem.findOneAndDelete({ userId: interaction.user.id, animeId: String(anime.id) });
 
         if (!deleted) {
             return await interaction.editReply(`**${animeTitle}** was not in your favorites list.`);
@@ -2475,7 +2500,7 @@ else if (commandName === 'track') {
 
                 const embed = new EmbedBuilder()
                     .setTitle('🎯 Tracking Started!')
-                    .setDescription(`Now tracking **[${animeTitle}](${siteUrl})** in <#${interaction.channelId}>.\nYou will receive alerts here when new episodes release!`)
+                    .setDescription(`Now tracking **[${animeTitle}](${siteUrl})** in <#${await getServerAlertChannelId(interaction.guildId, interaction.channelId)}>.\nYou will receive alerts there when new episodes release!`)
                     .setThumbnail(coverUrl)
                     .setColor('#3498db')
                     .setFooter({ text: 'AniTracker • Emergency Backup' });
@@ -2590,7 +2615,7 @@ else if (commandName === 'untrack') {
             const kitsuAnime = kitsuData?.data?.[0];
 
             if (kitsuAnime) {
-                const kitsuId = parseInt(kitsuAnime.id);
+                const kitsuId = `kitsu_${kitsuAnime.id}`;
                 const animeTitle = kitsuAnime.attributes?.canonicalTitle || searchQuery;
 
                 const deleted = await TrackedItem.findOneAndDelete({ guildId: interaction.guildId, animeId: kitsuId });
@@ -2807,29 +2832,36 @@ async function runUpdateChecks() {
 
         for (const item of favorites) {
             try {
-                const animeId = Number(item.animeId);
-                if (!Number.isInteger(animeId)) {
-                    continue;
+                let anime;
+                if (item.source === 'kitsu' || String(item.animeId).startsWith('kitsu_')) {
+                    anime = await fetchKitsuAnime(String(item.animeId).replace(/^kitsu_/, ''));
+                } else {
+                    const animeId = Number(item.animeId);
+                    if (!Number.isInteger(animeId)) {
+                        continue;
+                    }
+
+                    const gqlQuery = `
+                    query ($id: Int) {
+                      Media (id: $id, type: ANIME) {
+                        id
+                        title { romaji english }
+                        episodes
+                        status
+                        coverImage { large }
+                        siteUrl
+                        nextAiringEpisode { episode }
+                      }
+                    }`;
+
+                    const data = await fetchAniList(gqlQuery, { id: animeId });
+                    anime = data?.Media;
                 }
 
-                const gqlQuery = `
-                query ($id: Int) {
-                  Media (id: $id, type: ANIME) {
-                    id
-                    title { romaji english }
-                    episodes
-                    status
-                    coverImage { large }
-                    siteUrl
-                    nextAiringEpisode { episode }
-                  }
-                }`;
-
-                const data = await fetchAniList(gqlQuery, { id: animeId });
-                const anime = data?.Media;
-
                 if (anime) {
-                    const currentEps = getAiredEpisodes(anime);
+                    const currentEps = item.source === 'kitsu' || String(item.animeId).startsWith('kitsu_')
+                        ? anime.episodes
+                        : getAiredEpisodes(anime);
                     const lastEps = item.lastEpisodes || 0;
 
                     if (currentEps > lastEps) {
