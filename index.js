@@ -216,26 +216,83 @@ let updateChecker = async () => {
 
 // دالة جلب البيانات عبر Vercel Proxy
 async function fetchAniList(query, variables) {
-    try {
-        const response = await axios.post('https://anilist-proxy-lemon.vercel.app/api/proxy', {
-            query,
-            variables
-        }, {
-            headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json'
-            },
-            timeout: 10000
-        });
+    for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+            const response = await axios.post('https://anilist-proxy-lemon.vercel.app/api/proxy', {
+                query,
+                variables
+            }, {
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                timeout: 10000
+            });
 
-        if (response.data && response.data.data) {
-            return response.data.data;
+            if (response.data?.errors?.length) {
+                throw new Error(response.data.errors[0].message || 'AniList GraphQL error');
+            }
+
+            if (response.data?.data) {
+                return response.data.data;
+            }
+            return null;
+        } catch (error) {
+            if (attempt === 3) {
+                console.error('Proxy Fetch Error:', error.response ? error.response.status : error.message);
+                return null;
+            }
+            await sleep(attempt * 350);
         }
-        return null;
-    } catch (error) {
-        console.error('Proxy Fetch Error:', error.response ? error.response.status : error.message);
-        return null;
     }
+}
+
+function cleanMediaDescription(description, maxLength = 180) {
+    const clean = (description || 'No synopsis available.')
+        .replace(/<[^>]*>?/gm, '')
+        .replace(/~!/g, '')
+        .replace(/!~/g, '')
+        .trim();
+    return clean.length > maxLength ? `${clean.substring(0, maxLength).trim()}...` : clean;
+}
+
+function buildMediaButtons(media, interaction, mediaType = 'anime') {
+    const id = String(media.id);
+    const buttons = [];
+
+    if (mediaType === 'anime') {
+        buttons.push(new ButtonBuilder()
+            .setCustomId(`fav_btn_${id}`)
+            .setLabel('⭐ Favorite')
+            .setStyle(ButtonStyle.Primary));
+        if (interaction.guildId && media.status !== 'FINISHED') {
+            buttons.unshift(new ButtonBuilder()
+                .setCustomId(`track_btn_${id}`)
+                .setLabel('🎯 Track')
+                .setStyle(ButtonStyle.Success));
+        }
+    }
+
+    buttons.push(new ButtonBuilder()
+        .setCustomId(`media_info_${mediaType}_${id}`)
+        .setLabel('📖 More Info')
+        .setStyle(ButtonStyle.Secondary));
+
+    if (media.siteUrl) {
+        buttons.push(new ButtonBuilder()
+            .setLabel('🔗 Share')
+            .setStyle(ButtonStyle.Link)
+            .setURL(media.siteUrl));
+    }
+
+    if (mediaType === 'anime' && media.trailer?.site === 'youtube' && media.trailer?.id) {
+        buttons.push(new ButtonBuilder()
+            .setLabel('▶️ Trailer')
+            .setStyle(ButtonStyle.Link)
+            .setURL(`https://www.youtube.com/watch?v=${media.trailer.id}`));
+    }
+
+    return [new ActionRowBuilder().addComponents(buttons.slice(0, 5))];
 }
 
 async function fetchKitsuAnime(id) {
@@ -370,6 +427,7 @@ const allCommands = [
         .addStringOption(option =>
             option.setName('title')
                 .setDescription('Anime title')
+                .setAutocomplete(true)
                 .setRequired(true)),
     new SlashCommandBuilder()
         .setName('manga')
@@ -444,6 +502,9 @@ const allCommands = [
     new SlashCommandBuilder()
         .setName('testalert')
         .setDescription('(Dev only) Manually run the episode-alert check right now'),
+        new SlashCommandBuilder()
+            .setName('health')
+            .setDescription('(Owner only) Check AniTracker service health'),
     new SlashCommandBuilder()
         .setName('unverifyage')
         .setDescription('(Owner only) Remove 18+ age verification for a user')
@@ -513,7 +574,8 @@ const OWNER_COMMAND_NAMES = new Set([
     'maintenance-dm',
     'bot-status',
     'getinvite',
-    'testalert'
+    'testalert',
+    'health'
 ]);
 const commands = allCommands.filter(command => !OWNER_COMMAND_NAMES.has(command.name));
 const ownerCommands = allCommands.filter(command => OWNER_COMMAND_NAMES.has(command.name));
@@ -679,6 +741,7 @@ if (interaction.isStringSelectMenu()) {
               description(asHtml: false)
               coverImage { large }
               siteUrl
+              trailer { id site }
             }
           }
         }`;
@@ -720,7 +783,7 @@ if (interaction.isStringSelectMenu()) {
                             { name: 'Status', value: jikanData.status || 'N/A', inline: true },
                             { name: 'Score', value: jikanData.score || 'N/A', inline: true }
                         )
-                        .setDescription(jikanData.synopsis)
+                        .setDescription('Click **More Info** on the AniList result for the full synopsis and details.')
                         .setColor(genreDefinition.adultOnly ? '#8e44ad' : '#1abc9c');
 
                     await interaction.editReply({ content: '', embeds: [fallbackEmbed], components: [] });
@@ -749,10 +812,6 @@ if (interaction.isStringSelectMenu()) {
         try {
             const media = mediaList[Math.floor(Math.random() * mediaList.length)];
             const title = (media.title && (media.title.english || media.title.romaji)) || `${mediaType} title`;
-            const cleanDesc = media.description
-                ? media.description.replace(/<[^>]*>?/gm, '').substring(0, 300) + '...'
-                : 'No synopsis available.';
-
             const embed = new EmbedBuilder()
                 .setTitle(`🎭 ${genreDefinition.label} ${mediaType === 'anime' ? 'Anime' : 'Manga'} Recommendation: ${title}`)
                 .setURL(media.siteUrl || 'https://anilist.co')
@@ -766,27 +825,11 @@ if (interaction.isStringSelectMenu()) {
                     { name: 'Status', value: media.status || 'N/A', inline: true },
                     { name: 'Score', value: media.averageScore ? `${media.averageScore} / 100` : 'N/A', inline: true }
                 )
-                .setDescription(cleanDesc)
+                .setDescription('Click **More Info** for the full synopsis and details.')
                 .setColor(genreDefinition.adultOnly ? '#8e44ad' : '#1abc9c');
 
             const components = [];
-            if (mediaType === 'anime') {
-                const trackBtn = new ButtonBuilder()
-                    .setCustomId(`track_btn_${media.id}`)
-                    .setLabel('🎯 Channel Track')
-                    .setStyle(ButtonStyle.Success);
-
-                const favBtn = new ButtonBuilder()
-                    .setCustomId(`fav_btn_${media.id}`)
-                    .setLabel('⭐ Favorite (DM Alert)')
-                    .setStyle(ButtonStyle.Primary);
-
-                const buttons = [favBtn];
-                if (interaction.guildId && media.status !== 'FINISHED') {
-                    buttons.unshift(trackBtn);
-                }
-                components.push(new ActionRowBuilder().addComponents(...buttons));
-            }
+            components.push(...buildMediaButtons(media, interaction, mediaType));
 
             await interaction.editReply({ content: '', embeds: [embed], components });
         } catch (err) {
@@ -944,6 +987,68 @@ if (interaction.isButton()) {
                 content: `✅ Server episode alerts are now **${enabled ? 'enabled' : 'disabled'}**.`,
                 components: []
             });
+        }
+    }
+
+    if (interaction.customId.startsWith('media_info_')) {
+        await interaction.deferReply({ ephemeral: true });
+        const [, mediaType, mediaId] = interaction.customId.split('_');
+        const gqlQuery = `
+        query ($id: Int, $type: MediaType) {
+          Media (id: $id, type: $type) {
+            id
+            title { romaji english native }
+            description(asHtml: false)
+            genres
+            studios { nodes { name } }
+            format
+            season
+            seasonYear
+            episodes
+            chapters
+            volumes
+            status
+            averageScore
+            coverImage { large }
+            siteUrl
+            trailer { id site }
+          }
+        }`;
+
+        try {
+            const data = await fetchAniList(gqlQuery, {
+                id: Number(mediaId),
+                type: mediaType === 'manga' ? 'MANGA' : 'ANIME'
+            });
+            const media = data?.Media;
+            if (!media) {
+                return interaction.editReply('❌ More information is currently unavailable.');
+            }
+
+            const title = media.title?.english || media.title?.romaji || 'Unknown title';
+            const details = new EmbedBuilder()
+                .setTitle(`📖 ${title}`)
+                .setURL(media.siteUrl || 'https://anilist.co')
+                .setThumbnail(media.coverImage?.large || 'https://i.imgur.com/AGv4yDI.png')
+                .setDescription(cleanMediaDescription(media.description, 3800))
+                .addFields(
+                    { name: 'Type', value: media.format || mediaType.toUpperCase(), inline: true },
+                    { name: 'Status', value: media.status || 'N/A', inline: true },
+                    { name: 'Score', value: media.averageScore ? `${media.averageScore} / 100` : 'N/A', inline: true },
+                    { name: mediaType === 'manga' ? 'Chapters' : 'Episodes', value: `${mediaType === 'manga' ? (media.chapters ?? 'N/A') : (media.episodes ?? 'N/A')}`, inline: true },
+                    { name: 'Genres', value: media.genres?.slice(0, 8).join(', ') || 'N/A', inline: false },
+                    { name: 'Studios', value: media.studios?.nodes?.map(studio => studio.name).slice(0, 5).join(', ') || 'N/A', inline: false }
+                )
+                .setColor('#3498db')
+                .setFooter({ text: 'AniTracker • More Info' });
+
+            return interaction.editReply({
+                embeds: [details],
+                components: buildMediaButtons(media, interaction, mediaType)
+            });
+        } catch (err) {
+            console.error('Media info button error:', err);
+            return interaction.editReply('❌ Failed to load more information. Please try again later.');
         }
     }
 
@@ -1144,6 +1249,35 @@ if (interaction.isButton()) {
     }
     return;
     }
+
+    if (interaction.isAutocomplete()) {
+        const focused = interaction.options.getFocused().trim();
+        if (!focused) {
+            return interaction.respond([]);
+        }
+
+        const query = `
+        query ($search: String) {
+          Page (page: 1, perPage: 8) {
+            media (search: $search, type: ANIME, sort: SEARCH_MATCH) {
+              id
+              title { romaji english }
+            }
+          }
+        }`;
+        try {
+            const data = await fetchAniList(query, { search: focused });
+            const choices = (data?.Page?.media || []).map(media => ({
+                name: `${media.title?.english || media.title?.romaji || 'Unknown'} (${media.id})`.substring(0, 100),
+                value: (media.title?.english || media.title?.romaji || focused).substring(0, 100)
+            }));
+            return interaction.respond(choices);
+        } catch (err) {
+            console.error('Anime autocomplete error:', err);
+            return interaction.respond([]);
+        }
+    }
+
     if (!interaction.isChatInputCommand()) return;
 
     const { commandName } = interaction;
@@ -2026,6 +2160,7 @@ else if (commandName === 'anime') {
         description(asHtml: false)
         coverImage { large }
         siteUrl
+        trailer { id site }
         isAdult
       }
     }`;
@@ -2063,7 +2198,7 @@ else if (commandName === 'anime') {
                         { name: 'Status', value: jikanData.status || 'N/A', inline: true },
                         { name: 'Score', value: jikanData.score ? `${jikanData.score}` : 'N/A', inline: true }
                     )
-                    .setDescription(cleanSynopsis)
+                    .setDescription('Click **Share** for the source page. Full synopsis is available on the linked page.')
                     .setColor('#FF5733')
                     .setFooter({ text: 'AniTracker • Search (Backup API)' });
 
@@ -2140,11 +2275,6 @@ else if (commandName === 'anime') {
 
         const title = anime.title?.english || anime.title?.romaji || searchQuery;
         
-        // تنظيف الوصف والقص التلقائي
-        let rawDesc = anime.description || 'No synopsis available.';
-        rawDesc = rawDesc.replace(/<[^>]*>?/gm, '');
-        const cleanDesc = rawDesc.length > 320 ? rawDesc.substring(0, 320).trim() + '...' : rawDesc;
-
         const embed = new EmbedBuilder()
             .setTitle(title)
             .setURL(anime.siteUrl || 'https://anilist.co')
@@ -2154,30 +2284,11 @@ else if (commandName === 'anime') {
                 { name: 'Status', value: anime.status || 'N/A', inline: true },
                 { name: 'Score', value: anime.averageScore ? `${anime.averageScore} / 100` : 'N/A', inline: true }
             )
-            .setDescription(cleanDesc)
+            .setDescription('Click **More Info** for the full synopsis and details.')
             .setColor('#FF5733')
             .setFooter({ text: 'AniTracker • Anime Search' });
 
-        // 🎯 الأزرار للانميات المستمرة فقط
-        let components = [];
-        if (anime.status === 'RELEASING') {
-            const favBtn = new ButtonBuilder()
-                .setCustomId(`fav_btn_${anime.id}`)
-                .setLabel('⭐ Favorite (DM Alert)')
-                .setStyle(ButtonStyle.Primary);
-
-            const buttons = [favBtn];
-
-            if (interaction.guildId) {
-                const trackBtn = new ButtonBuilder()
-                    .setCustomId(`track_btn_${anime.id}`)
-                    .setLabel('🎯 Channel Track')
-                    .setStyle(ButtonStyle.Success);
-                buttons.unshift(trackBtn);
-            }
-
-            components = [new ActionRowBuilder().addComponents(...buttons)];
-        }
+        const components = buildMediaButtons(anime, interaction, 'anime');
 
         await interaction.editReply({ 
             embeds: [embed], 
@@ -2758,8 +2869,49 @@ else if (commandName === 'mytracked') {
         await interaction.editReply('Failed to fetch tracked list.');
     }
 }
+   // 🩺 Owner Health Command
+   else if (commandName === 'health') {
+       const DEV_ID = process.env.DEV_USER_ID || '1326815636395003966';
+       if (interaction.user.id !== DEV_ID) {
+           return interaction.reply({
+               content: '🚫 This command is reserved for the bot owner.',
+               flags: MessageFlags.Ephemeral
+           });
+       }
+
+       await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+       const startedAt = Date.now();
+       let proxyStatus = '❌ Offline';
+
+       try {
+           const healthQuery = 'query { Media(id: 1, type: ANIME) { id } }';
+           const proxyStart = Date.now();
+           const proxyData = await fetchAniList(healthQuery, {});
+           proxyStatus = proxyData ? `✅ Online (${Date.now() - proxyStart}ms)` : '❌ Unavailable';
+       } catch (err) {
+           console.error('health proxy check error:', err);
+       }
+
+       const dbStates = ['disconnected', 'connected', 'connecting', 'disconnecting'];
+       const dbStatus = dbStates[mongoose.connection.readyState] || 'unknown';
+       const embed = new EmbedBuilder()
+           .setTitle('🩺 AniTracker Health')
+           .setColor(dbStatus === 'connected' && proxyStatus.startsWith('✅') ? '#2ecc71' : '#f1c40f')
+           .addFields(
+               { name: 'Discord', value: interaction.client.ws.status === 0 ? '✅ Connected' : `⚠️ Status ${interaction.client.ws.status}`, inline: true },
+               { name: 'MongoDB', value: dbStatus === 'connected' ? '✅ Connected' : `⚠️ ${dbStatus}`, inline: true },
+               { name: 'AniList Proxy', value: proxyStatus, inline: true },
+               { name: 'Uptime', value: `${Math.floor(process.uptime() / 60)} minutes`, inline: true },
+               { name: 'Response', value: `${Date.now() - startedAt}ms`, inline: true },
+               { name: 'Memory', value: `${Math.round(process.memoryUsage().rss / 1024 / 1024)} MB RSS`, inline: true }
+           )
+           .setTimestamp()
+           .setFooter({ text: 'AniTracker • Owner diagnostics' });
+
+       return interaction.editReply({ embeds: [embed] });
+   }
    // 🧪 Test Alert Command (Dev Only)
-else if (commandName === 'testalert') {
+   else if (commandName === 'testalert') {
     const DEV_ID = process.env.DEV_USER_ID || '1326815636395003966';
 
     // 1️⃣ حماية الأمر للمطور فقط
