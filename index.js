@@ -767,6 +767,20 @@ if (interaction.isModalSubmit() && interaction.customId === 'settings_timezone_m
 }
 
 if (interaction.isButton()) {
+    if (interaction.customId === 'schedule_change_timezone') {
+        const modal = new ModalBuilder()
+            .setCustomId('settings_timezone_modal')
+            .setTitle('Change Your Timezone');
+        const timezoneInput = new TextInputBuilder()
+            .setCustomId('timezone')
+            .setLabel('City or IANA timezone')
+            .setPlaceholder('Cairo, Dubai, New York, or Africa/Cairo')
+            .setStyle(TextInputStyle.Short)
+            .setRequired(true);
+        modal.addComponents(new ActionRowBuilder().addComponents(timezoneInput));
+        return interaction.showModal(modal);
+    }
+
     if (interaction.customId.startsWith('settings_')) {
         const [, setting, , state] = interaction.customId.split('_');
         const enabled = state === 'on';
@@ -1280,11 +1294,18 @@ else if (commandName === 'schedule') {
         const embed = new EmbedBuilder()
             .setColor('#ff69b4')
             .setTitle('📅 Today\'s Anime Schedule')
-            .setDescription(descriptionLines.join('\n'))
+            .setDescription(`${descriptionLines.join('\n')}\n\n💡 Want to change the time shown here? Click **Change timezone** below, or use \`/settings\` anytime.`)
             .setFooter({ text: `Total scheduled: ${schedules.length} • Powered by ${sourceName} • Your timezone: ${timezone}` })
             .setTimestamp();
 
-        await interaction.editReply({ embeds: [embed] });
+        const timezoneButton = new ButtonBuilder()
+            .setCustomId('schedule_change_timezone')
+            .setLabel('Change timezone')
+            .setStyle(ButtonStyle.Primary);
+        await interaction.editReply({
+            embeds: [embed],
+            components: [new ActionRowBuilder().addComponents(timezoneButton)]
+        });
 
     } catch (err) {
         console.error('Error fetching schedule:', err);
