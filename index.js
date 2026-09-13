@@ -260,12 +260,13 @@ function buildMediaButtons(media, interaction, mediaType = 'anime') {
     const id = String(media.id);
     const buttons = [];
 
-    if (mediaType === 'anime') {
+    const isFinished = media.status === 'FINISHED' || media.status === 'CANCELLED';
+    if (mediaType === 'anime' && !isFinished) {
         buttons.push(new ButtonBuilder()
             .setCustomId(`fav_btn_${id}`)
             .setLabel('⭐ Favorite')
             .setStyle(ButtonStyle.Primary));
-        if (interaction.guildId && media.status !== 'FINISHED') {
+        if (interaction.guildId) {
             buttons.unshift(new ButtonBuilder()
                 .setCustomId(`track_btn_${id}`)
                 .setLabel('🎯 Track')
@@ -435,6 +436,7 @@ const allCommands = [
         .addStringOption(option =>
             option.setName('title')
                 .setDescription('Manga title')
+                .setAutocomplete(true)
                 .setRequired(true)),
     new SlashCommandBuilder()
         .setName('character')
@@ -442,6 +444,7 @@ const allCommands = [
         .addStringOption(option =>
             option.setName('name')
                 .setDescription('Character name')
+                .setAutocomplete(true)
                 .setRequired(true)),
     new SlashCommandBuilder()
     .setName('genre')
@@ -569,16 +572,25 @@ const OWNER_COMMAND_NAMES = new Set([
     'servers',
     'eval',
     'broadcast',
-    'verifyage',
-    'unverifyage',
     'maintenance-dm',
     'bot-status',
     'getinvite',
     'testalert',
     'health'
 ]);
-const commands = allCommands.filter(command => !OWNER_COMMAND_NAMES.has(command.name));
-const ownerCommands = allCommands.filter(command => OWNER_COMMAND_NAMES.has(command.name));
+const SERVER_ONLY_OWNER_COMMAND_NAMES = new Set(['verifyage', 'unverifyage']);
+const commands = allCommands.filter(command =>
+    !OWNER_COMMAND_NAMES.has(command.name) && !SERVER_ONLY_OWNER_COMMAND_NAMES.has(command.name)
+);
+const ownerCommands = allCommands.filter(command =>
+    OWNER_COMMAND_NAMES.has(command.name) || SERVER_ONLY_OWNER_COMMAND_NAMES.has(command.name)
+);
+const globalOwnerCommands = allCommands
+    .filter(command => OWNER_COMMAND_NAMES.has(command.name))
+    .map(command => ({
+        ...command,
+        default_member_permissions: PermissionFlagsBits.Administrator.toString()
+    }));
 const BOT_OWNER_ID = process.env.DEV_USER_ID || '1326815636395003966';
 
 client.once('clientReady', async () => {
@@ -592,7 +604,7 @@ client.once('clientReady', async () => {
         console.log('Started refreshing application (/) commands.');
         await rest.put(
             Routes.applicationCommands(client.user.id),
-            { body: commands }
+            { body: [...commands, ...globalOwnerCommands] }
         );
         console.log('Successfully reloaded application (/) commands!');
 
@@ -623,6 +635,37 @@ client.once('clientReady', async () => {
     }
     // Background Tracker Loop (Checks every 30 minutes)
     setInterval(() => updateChecker(), 30 * 60 * 1000);
+});
+
+client.on('guildCreate', async guild => {
+    const welcome = new EmbedBuilder()
+        .setTitle('🎉 Thanks for adding AniTracker!')
+        .setDescription('Your anime companion is ready. Start with these commands:')
+        .addFields(
+            { name: '🔎 Discover', value: '`/anime` • `/manga` • `/character` • `/genre`' },
+            { name: '📢 Server Alerts', value: 'Run `/setup` to choose an alert channel, then use `/track`.' },
+            { name: '⚙️ Personal Settings', value: '`/settings` • `/schedule` • `/favorite`' },
+            { name: '📖 Need Help?', value: 'Use `/help` or join the support server below.' }
+        )
+        .setColor('#2ecc71')
+        .setFooter({ text: 'AniTracker • Ready to explore' });
+    const supportButton = new ButtonBuilder()
+        .setLabel('💬 Support Server')
+        .setStyle(ButtonStyle.Link)
+        .setURL('https://discord.gg/H4Af2y4RD8');
+    const channel = guild.systemChannel
+        || guild.channels.cache.find(candidate =>
+            candidate.isTextBased() && candidate.permissionsFor(guild.members.me)?.has(PermissionFlagsBits.SendMessages)
+        );
+    if (!channel) return;
+    try {
+        await channel.send({
+            embeds: [welcome],
+            components: [new ActionRowBuilder().addComponents(supportButton)]
+        });
+    } catch (err) {
+        console.error(`Could not send welcome message in guild ${guild.id}:`, err.message);
+    }
 });
 
 client.on('interactionCreate', async interaction => {
@@ -941,6 +984,14 @@ if (interaction.isModalSubmit() && interaction.customId === 'settings_timezone_m
 }
 
 if (interaction.isButton()) {
+    if (interaction.customId === 'start_settings') {
+        return interaction.reply({
+            content: '⚙️ Choose a setting to change:',
+            components: [buildSettingsMenu()],
+            flags: MessageFlags.Ephemeral
+        });
+    }
+
     if (interaction.customId === 'schedule_change_timezone') {
         const modal = new ModalBuilder()
             .setCustomId('settings_timezone_modal')
@@ -992,7 +1043,10 @@ if (interaction.isButton()) {
 
     if (interaction.customId.startsWith('media_info_')) {
         await interaction.deferReply({ ephemeral: true });
-        const [, mediaType, mediaId] = interaction.customId.split('_');
+        const [, , mediaType, mediaId] = interaction.customId.split('_');
+        if (!['anime', 'manga'].includes(mediaType) || !Number.isInteger(Number(mediaId))) {
+            return interaction.editReply('❌ This media action is no longer valid. Please run the search again.');
+        }
         const gqlQuery = `
         query ($id: Int, $type: MediaType) {
           Media (id: $id, type: $type) {
@@ -1091,6 +1145,12 @@ if (interaction.isButton()) {
                 });
             }
             return await interaction.editReply({ content: '❌ Could not connect to primary services to track this anime. Please try again in a moment.' });
+        }
+
+        if (anime.status === 'FINISHED' || anime.status === 'CANCELLED') {
+            return await interaction.editReply({
+                content: `ℹ️ **${anime.title?.english || anime.title?.romaji || 'This anime'}** is finished, so it cannot be tracked for new episodes.`
+            });
         }
 
         const animeTitle = (anime.title && (anime.title.english || anime.title.romaji)) || 'Unknown Anime';
@@ -1231,7 +1291,7 @@ if (interaction.isButton()) {
         const embed = new EmbedBuilder()
             .setTitle(`📖 ${char.name?.full || 'Unknown'} — More Info`)
             .setURL(char.siteUrl || 'https://anilist.co')
-            .setDescription(cleanDesc)
+            .setDescription('Click **More Info** for the full biography and character details.')
             .setThumbnail(char.image?.large || 'https://i.imgur.com/AGv4yDI.png')
             .addFields(
                 { name: 'Native Name', value: char.name?.native || 'N/A', inline: true },
@@ -1256,10 +1316,33 @@ if (interaction.isButton()) {
             return interaction.respond([]);
         }
 
+        if (interaction.commandName === 'character') {
+            const query = `
+            query ($search: String) {
+              Page (page: 1, perPage: 8) {
+                characters (search: $search, sort: SEARCH_MATCH) {
+                  id
+                  name { full }
+                }
+              }
+            }`;
+            try {
+                const data = await fetchAniList(query, { search: focused });
+                return interaction.respond((data?.Page?.characters || []).map(character => ({
+                    name: `${character.name?.full || 'Unknown'} (${character.id})`.substring(0, 100),
+                    value: (character.name?.full || focused).substring(0, 100)
+                })));
+            } catch (err) {
+                console.error('Character autocomplete error:', err);
+                return interaction.respond([]);
+            }
+        }
+
+        const mediaType = interaction.commandName === 'manga' ? 'MANGA' : 'ANIME';
         const query = `
         query ($search: String) {
           Page (page: 1, perPage: 8) {
-            media (search: $search, type: ANIME, sort: SEARCH_MATCH) {
+            media (search: $search, type: ${mediaType}, sort: SEARCH_MATCH) {
               id
               title { romaji english }
             }
@@ -1273,7 +1356,7 @@ if (interaction.isButton()) {
             }));
             return interaction.respond(choices);
         } catch (err) {
-            console.error('Anime autocomplete error:', err);
+            console.error(`${interaction.commandName} autocomplete error:`, err);
             return interaction.respond([]);
         }
     }
@@ -1290,21 +1373,13 @@ if (commandName === 'start') {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     const embed = new EmbedBuilder()
-        .setTitle('🚀 Welcome to AniTracker!')
-        .setDescription('Your ultimate Discord companion for anime search, recommendations, and automatic episode notifications!')
+        .setTitle('🚀 Welcome to AniTracker')
+        .setDescription('Search anime and manga, discover new favorites, and get episode alerts without leaving Discord.')
         .addFields(
-            { 
-                name: '✨ What can AniTracker do?', 
-                value: '• Search Anime & Manga details instantly.\n• Track anime in server channels for group alerts.\n• Add anime to personal favorites for **Direct Message (DM)** updates.\n• Find random high-rated anime by category/genre.' 
-            },
-            { 
-                name: '📚 Quick Start Commands', 
-                value: '`/anime` - Search any anime\n`/manga` - Search any manga\n`/genre` - Choose Anime/Manga, then a category\n`/track` - Track anime in a server channel\n`/favorite` - Receive personal DM updates\n`/help` - Show full commands list' 
-            },
-            { 
-                name: '🐛 Report a Problem or Request Features', 
-                value: 'If you encounter any bugs, issues, or have suggestions, please visit the support server for more help.' 
-            }
+            { name: '🔎 Discover', value: '`/anime` • `/manga` • `/character` • `/genre`' },
+            { name: '⭐ Personal', value: '`/favorite` • `/myfavorites` • `/schedule`' },
+            { name: '📢 Server Alerts', value: 'Use `/setup` once, then `/track` for new episode alerts.' },
+            { name: '⚙️ Customize', value: 'Use `/settings` for timezone and notification preferences.' }
         )
         .setColor('#2ecc71')
         .setThumbnail(client.user.displayAvatarURL())
@@ -1322,11 +1397,16 @@ if (commandName === 'start') {
         .setURL(`https://discord.com/oauth2/authorize?client_id=${client.user.id}&scope=bot%20applications.commands&permissions=8`);
 
     const guideBtn = new ButtonBuilder()
-        .setLabel('📖 User Guide')
+        .setLabel('📖 Help')
         .setStyle(ButtonStyle.Link)
         .setURL('https://discord.gg/H4Af2y4RD8');
 
-    const row = new ActionRowBuilder().addComponents(supportBtn, inviteBtn, guideBtn);
+    const settingsBtn = new ButtonBuilder()
+        .setCustomId('start_settings')
+        .setLabel('⚙️ Settings')
+        .setStyle(ButtonStyle.Secondary);
+
+    const row = new ActionRowBuilder().addComponents(supportBtn, inviteBtn, guideBtn, settingsBtn);
 
     // لو الأمر شغال في الخاص مباشرة (DMs)
     if (!interaction.guildId) {
@@ -1778,7 +1858,7 @@ else if (commandName === 'character') {
                 const embed = new EmbedBuilder()
                     .setTitle(`🎭 ${kitsuChar.name || characterName}`)
                     .setURL(kitsuChar.url || 'https://kitsu.io')
-                    .setDescription(kitsuChar.about || 'No biography available.')
+                    .setDescription('Click **More Info** for the full biography and character details.')
                     .setImage(kitsuChar.image || 'https://i.imgur.com/AGv4yDI.png')
                     .setColor('#9b59b6')
                     .setFooter({ text: 'AniTracker • Character Search (Kitsu Backup)' });
@@ -1816,13 +1896,10 @@ else if (commandName === 'character') {
         let rawDesc = char.description || 'No description available.';
         rawDesc = rawDesc.replace(/<[^>]*>/gm, '').replace(/~!/g, '||').replace(/!~/g, '||');
 
-        let cleanDesc = rawDesc.length > 350 ? rawDesc.substring(0, 350) + '...' : rawDesc;
-        if ((cleanDesc.match(/\|\|/g) || []).length % 2 !== 0) cleanDesc += '||';
-
         const embed = new EmbedBuilder()
             .setTitle(`🎭 ${nameFull}${nameNative}`)
             .setURL(char.siteUrl || 'https://anilist.co')
-            .setDescription(cleanDesc)
+            .setDescription('Click **More Info** for the full biography and character details.')
             .addFields(
                 { name: '📺 From Anime', value: animeSource, inline: true },
                 { name: '🎙️ Voice Actor', value: vaName, inline: true },
@@ -2477,6 +2554,7 @@ else if (commandName === 'manga') {
         description(asHtml: false)
         coverImage { large }
         siteUrl
+        genres
         isAdult
       }
     }`;
@@ -2495,7 +2573,7 @@ else if (commandName === 'manga') {
     if (!manga) {
         console.log('AniList failed or returned no data for Manga. Fetching from Fallback...');
         try {
-            const jikanData = await getAnimeJikan(searchQuery);
+            const jikanData = await getMangaJikan(searchQuery);
 
             if (jikanData) {
                 // تنظيف الوصف بشكل آمن
@@ -2514,7 +2592,7 @@ else if (commandName === 'manga') {
                         { name: 'Status', value: jikanData.status || 'N/A', inline: true },
                         { name: 'Score', value: jikanData.score ? `${jikanData.score}` : 'N/A', inline: true }
                     )
-                    .setDescription(cleanSynopsis)
+                    .setDescription('Click **More Info** for the full synopsis and details.')
                     .setColor('#33FF57')
                     .setFooter({ text: 'AniTracker • Manga Search (Backup API)' });
 
@@ -2565,11 +2643,6 @@ else if (commandName === 'manga') {
 
         const title = manga.title?.english || manga.title?.romaji || searchQuery;
         
-        // تنظيف القص والوصف
-        let rawDesc = manga.description || 'No synopsis available.';
-        rawDesc = rawDesc.replace(/<[^>]*>?/gm, '');
-        const cleanDesc = rawDesc.length > 320 ? rawDesc.substring(0, 320).trim() + '...' : rawDesc;
-
         const embed = new EmbedBuilder()
             .setTitle(title)
             .setURL(manga.siteUrl || 'https://anilist.co')
@@ -2580,11 +2653,14 @@ else if (commandName === 'manga') {
                 { name: 'Status', value: manga.status || 'N/A', inline: true },
                 { name: 'Score', value: manga.averageScore ? `${manga.averageScore} / 100` : 'N/A', inline: true }
             )
-            .setDescription(cleanDesc)
+            .setDescription('Click **More Info** for the full synopsis and details.')
             .setColor('#33FF57')
             .setFooter({ text: 'AniTracker • Manga Search' });
 
-        await interaction.editReply({ embeds: [embed] });
+        await interaction.editReply({
+            embeds: [embed],
+            components: buildMediaButtons(manga, interaction, 'manga')
+        });
     } catch (err) {
         console.error('Manga Command Render Error:', err);
         await interaction.editReply('❌ Failed to display manga data. Please try again!');
