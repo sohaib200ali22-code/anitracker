@@ -1277,7 +1277,6 @@ else if (commandName === 'schedule') {
         for (const item of schedules) {
             const timeString = new Intl.DateTimeFormat('en-US', {
                 timeZone: timezone,
-                dateStyle: 'short',
                 timeStyle: 'short'
             }).format(new Date(item.airingAt * 1000));
             const line = `• **Ep ${item.episode}** - **${item.title}** at ${timeString}`;
