@@ -233,6 +233,59 @@ function isValidTimezone(timezone) {
     }
 }
 
+const CITY_TIMEZONES = new Map([
+    ['cairo', 'Africa/Cairo'],
+    ['alexandria', 'Africa/Cairo'],
+    ['casablanca', 'Africa/Casablanca'],
+    ['lagos', 'Africa/Lagos'],
+    ['johannesburg', 'Africa/Johannesburg'],
+    ['nairobi', 'Africa/Nairobi'],
+    ['london', 'Europe/London'],
+    ['paris', 'Europe/Paris'],
+    ['berlin', 'Europe/Berlin'],
+    ['rome', 'Europe/Rome'],
+    ['madrid', 'Europe/Madrid'],
+    ['istanbul', 'Europe/Istanbul'],
+    ['moscow', 'Europe/Moscow'],
+    ['riyadh', 'Asia/Riyadh'],
+    ['dubai', 'Asia/Dubai'],
+    ['abu dhabi', 'Asia/Dubai'],
+    ['doha', 'Asia/Qatar'],
+    ['kuwait city', 'Asia/Kuwait'],
+    ['baghdad', 'Asia/Baghdad'],
+    ['tehran', 'Asia/Tehran'],
+    ['karachi', 'Asia/Karachi'],
+    ['mumbai', 'Asia/Kolkata'],
+    ['delhi', 'Asia/Kolkata'],
+    ['new delhi', 'Asia/Kolkata'],
+    ['dhaka', 'Asia/Dhaka'],
+    ['bangkok', 'Asia/Bangkok'],
+    ['singapore', 'Asia/Singapore'],
+    ['beijing', 'Asia/Shanghai'],
+    ['shanghai', 'Asia/Shanghai'],
+    ['tokyo', 'Asia/Tokyo'],
+    ['seoul', 'Asia/Seoul'],
+    ['sydney', 'Australia/Sydney'],
+    ['melbourne', 'Australia/Melbourne'],
+    ['auckland', 'Pacific/Auckland'],
+    ['new york', 'America/New_York'],
+    ['washington', 'America/New_York'],
+    ['chicago', 'America/Chicago'],
+    ['denver', 'America/Denver'],
+    ['los angeles', 'America/Los_Angeles'],
+    ['san francisco', 'America/Los_Angeles'],
+    ['toronto', 'America/Toronto'],
+    ['vancouver', 'America/Vancouver'],
+    ['mexico city', 'America/Mexico_City'],
+    ['sao paulo', 'America/Sao_Paulo'],
+    ['buenos aires', 'America/Argentina/Buenos_Aires']
+]);
+
+function resolveTimezone(input) {
+    const normalized = input.trim().toLowerCase().replace(/\s+/g, ' ');
+    return CITY_TIMEZONES.get(normalized) || input.trim();
+}
+
 async function getServerAlertChannelId(guildId, fallbackChannelId) {
     const settings = await ServerSettings.findOne({ guildId }).lean();
     return settings?.alertChannelId || fallbackChannelId;
@@ -442,8 +495,8 @@ if (interaction.isStringSelectMenu()) {
                 .setTitle('Set Your Timezone');
             const timezoneInput = new TextInputBuilder()
                 .setCustomId('timezone')
-                .setLabel('IANA timezone')
-                .setPlaceholder('Africa/Cairo or America/New_York')
+                .setLabel('City or IANA timezone')
+                .setPlaceholder('Cairo, Dubai, New York, or Africa/Cairo')
                 .setStyle(TextInputStyle.Short)
                 .setRequired(true);
             modal.addComponents(new ActionRowBuilder().addComponents(timezoneInput));
@@ -692,10 +745,11 @@ if (interaction.isChannelSelectMenu() && interaction.customId === 'settings_aler
 }
 
 if (interaction.isModalSubmit() && interaction.customId === 'settings_timezone_modal') {
-    const timezone = interaction.fields.getTextInputValue('timezone').trim();
+    const input = interaction.fields.getTextInputValue('timezone').trim();
+    const timezone = resolveTimezone(input);
     if (!isValidTimezone(timezone)) {
         return interaction.reply({
-            content: '❌ Invalid timezone. Use an IANA timezone such as `Africa/Cairo`, `America/New_York`, or `Europe/London`.',
+            content: '❌ I could not recognize that city. Try a city such as `Cairo`, `Dubai`, `London`, or `New York`, or enter an IANA timezone like `Africa/Cairo`.',
             flags: MessageFlags.Ephemeral
         });
     }
