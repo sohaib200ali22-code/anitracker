@@ -587,15 +587,16 @@ const commands = allCommands.filter(command =>
 );
 const ownerCommands = allCommands.filter(command =>
     OWNER_COMMAND_NAMES.has(command.name) || SERVER_ONLY_OWNER_COMMAND_NAMES.has(command.name)
-);
+).map(command => ({
+    ...command,
+    default_member_permissions: PermissionFlagsBits.Administrator.toString()
+}));
 const globalOwnerCommands = allCommands
     .filter(command => OWNER_COMMAND_NAMES.has(command.name))
     .map(command => ({
         ...command,
         default_member_permissions: PermissionFlagsBits.Administrator.toString()
     }));
-const BOT_OWNER_ID = process.env.DEV_USER_ID || '1326815636395003966';
-
 client.once('clientReady', async () => {
     console.log(`Logged in as ${client.user.tag}!`);
 
@@ -612,27 +613,12 @@ client.once('clientReady', async () => {
         console.log('Successfully reloaded application (/) commands!');
 
         for (const guild of client.guilds.cache.values()) {
-            const registeredOwnerCommands = await rest.put(
+            await rest.put(
                 Routes.applicationGuildCommands(client.user.id, guild.id),
                 { body: ownerCommands }
             );
-
-            for (const command of registeredOwnerCommands) {
-                await rest.put(
-                    Routes.applicationCommandPermissions(client.user.id, guild.id, command.id),
-                    {
-                        body: {
-                            permissions: [{
-                                id: BOT_OWNER_ID,
-                                type: 1,
-                                permission: true
-                            }]
-                        }
-                    }
-                );
-            }
         }
-        console.log('Registered owner-only commands with private permissions.');
+        console.log('Registered owner-only commands with administrator visibility.');
     } catch (error) {
         console.error('Error registering commands:', error);
     }
