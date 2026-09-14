@@ -1165,7 +1165,6 @@ if (interaction.isButton()) {
 
             return interaction.editReply({
                 embeds: [details],
-                components: []
                 components: buildMediaButtons(media, interaction, mediaType, true)
             });
         } catch (err) {
