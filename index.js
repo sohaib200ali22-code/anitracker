@@ -37,6 +37,16 @@ const FavoriteSchema = new mongoose.Schema({
 });
 const FavoriteItem = mongoose.model('FavoriteItem', FavoriteSchema);
 
+async function findExistingFavorite(userId, animeId, animeTitle) {
+    return FavoriteItem.findOne({
+        userId,
+        $or: [
+            { animeId: String(animeId) },
+            { animeTitle }
+        ]
+    });
+}
+
 const UserSettingsSchema = new mongoose.Schema({
     userId: { type: String, unique: true },
     timezone: { type: String, default: 'UTC' },
@@ -275,7 +285,7 @@ function buildMediaButtons(media, interaction, mediaType = 'anime', alreadyViewe
     }
 
     buttons.push(new ButtonBuilder()
-        .setCustomId(`media_info_${mediaType}_${id}`)
+        .setCustomId(`more_info_${id}_${mediaType}`)
         .setLabel(alreadyViewed ? '📘 Details Opened' : '📖 More Info')
         .setStyle(ButtonStyle.Secondary)
         .setDisabled(alreadyViewed));
@@ -1074,12 +1084,12 @@ if (interaction.isButton()) {
         }
     }
 
-    if (interaction.customId.startsWith('media_info_')) {
+    if (interaction.customId.startsWith('more_info_')) {
         await interaction.deferReply({ ephemeral: true });
         await interaction.message.delete().catch(err => {
             console.warn('Could not delete media result message:', err.message);
         });
-        const [, , mediaType, mediaId] = interaction.customId.split('_');
+        const [, , mediaId, mediaType] = interaction.customId.split('_');
         if (!['anime', 'manga'].includes(mediaType) || !Number.isInteger(Number(mediaId))) {
             return interaction.editReply({ content: '❌ This media action is no longer valid. Please run the search again.', ephemeral: true });
         }
@@ -1248,6 +1258,7 @@ if (interaction.isButton()) {
             id
             title { romaji english }
             episodes
+            status
             siteUrl
           }
         }`;
@@ -1266,7 +1277,14 @@ if (interaction.isButton()) {
         }
 
         const animeTitle = (anime.title && (anime.title.english || anime.title.romaji)) || 'Unknown Anime';
-        const existing = await FavoriteItem.findOne({ userId: interaction.user.id, animeId: anime.id });
+
+        if (anime.status === 'FINISHED') {
+            return await interaction.editReply({
+                content: `ℹ️ **${animeTitle}** is finished and cannot be added for new episode DM alerts.`
+            });
+        }
+
+        const existing = await findExistingFavorite(interaction.user.id, anime.id, animeTitle);
 
         if (existing) {
             return await interaction.editReply({ content: `⭐ **${animeTitle}** is already in your personal favorites!` });
@@ -2001,6 +2019,7 @@ else if (commandName === 'favorite') {
         id
         title { romaji english }
         episodes
+        status
         siteUrl
       }
     }`;
@@ -2029,7 +2048,7 @@ else if (commandName === 'favorite') {
                 const animeTitle = attr.canonicalTitle || attr.titles?.en || searchQuery;
                 const siteUrl = `https://kitsu.io/anime/${kitsuAnime.id}`;
 
-                const existing = await FavoriteItem.findOne({ userId: interaction.user.id, animeId: kitsuId });
+                const existing = await findExistingFavorite(interaction.user.id, kitsuId, animeTitle);
 
                 if (existing) {
                     return await interaction.editReply(`⭐ **${animeTitle}** is already in your personal favorites!`);
@@ -2060,7 +2079,12 @@ else if (commandName === 'favorite') {
     // 3. Render/Save AniList Data
     try {
         const animeTitle = (anime.title && (anime.title.english || anime.title.romaji)) || searchQuery;
-        const existing = await FavoriteItem.findOne({ userId: interaction.user.id, animeId: anime.id });
+
+        if (anime.status === 'FINISHED') {
+            return await interaction.editReply(`ℹ️ **${animeTitle}** is finished and cannot be added for new episode DM alerts.`);
+        }
+
+        const existing = await findExistingFavorite(interaction.user.id, anime.id, animeTitle);
 
         if (existing) {
             return await interaction.editReply(`⭐ **${animeTitle}** is already in your personal favorites!`);
