@@ -1302,7 +1302,7 @@ if (interaction.isButton()) {
         const embed = new EmbedBuilder()
             .setTitle(`📖 ${char.name?.full || 'Unknown'} — More Info`)
             .setURL(char.siteUrl || 'https://anilist.co')
-            .setDescription(cleanDesc)
+            .setDescription('Click **More Info** for the full biography and character details.')
             .setThumbnail(char.image?.large || 'https://i.imgur.com/AGv4yDI.png')
             .addFields(
                 { name: 'Native Name', value: char.name?.native || 'N/A', inline: true },
