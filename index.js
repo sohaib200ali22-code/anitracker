@@ -412,6 +412,14 @@ const allCommands = [
                 .setAutocomplete(true)
                 .setRequired(true)),
     new SlashCommandBuilder()
+        .setName('fav')
+        .setDescription('Add an anime to your personal favorites (Receive DM notifications)')
+        .addStringOption(option =>
+            option.setName('title')
+                .setDescription('Anime title to add to favorites')
+                .setAutocomplete(true)
+                .setRequired(true)),
+    new SlashCommandBuilder()
         .setName('unfavorite')
         .setDescription('Remove an anime from your personal favorites')
         .addStringOption(option =>
@@ -1350,8 +1358,8 @@ if (interaction.isButton()) {
 
     if (interaction.isAutocomplete()) {
         const focused = String(interaction.options.getFocused() || '').trim();
-        const autocompleteCommands = new Set(['anime', 'manga', 'character', 'track', 'favorite']);
-        if (!autocompleteCommands.has(interaction.commandName) || focused.length < 2) {
+        const autocompleteCommands = new Set(['anime', 'manga', 'character', 'track', 'favorite', 'fav']);
+        if (!autocompleteCommands.has(interaction.commandName) || focused.length < 1) {
             return interaction.respond([]);
         }
 
@@ -1407,7 +1415,9 @@ if (interaction.isButton()) {
 
     if (!interaction.isChatInputCommand()) return;
 
-    const { commandName } = interaction;
+    const commandName = interaction.commandName === 'fav'
+        ? 'favorite'
+        : interaction.commandName;
 
     // -------------------------------------------------------------
 // 🚀 Start Command
