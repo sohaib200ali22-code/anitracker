@@ -409,6 +409,7 @@ const allCommands = [
         .addStringOption(option =>
             option.setName('title')
                 .setDescription('Anime title to add to favorites')
+                .setAutocomplete(true)
                 .setRequired(true)),
     new SlashCommandBuilder()
         .setName('unfavorite')
@@ -475,6 +476,7 @@ const allCommands = [
         .addStringOption(option =>
             option.setName('title')
                 .setDescription('Anime title to track')
+                .setAutocomplete(true)
                 .setRequired(true)),
     new SlashCommandBuilder()
     .setName('schedule')
@@ -1361,8 +1363,9 @@ if (interaction.isButton()) {
     }
 
     if (interaction.isAutocomplete()) {
-        const focused = interaction.options.getFocused().trim();
-        if (!focused) {
+        const focused = String(interaction.options.getFocused() || '').trim();
+        const autocompleteCommands = new Set(['anime', 'manga', 'character', 'track', 'favorite']);
+        if (!autocompleteCommands.has(interaction.commandName) || focused.length < 2) {
             return interaction.respond([]);
         }
 
@@ -1372,18 +1375,23 @@ if (interaction.isButton()) {
               Page (page: 1, perPage: 8) {
                 characters (search: $search, sort: SEARCH_MATCH) {
                   id
-                  name { full }
+                  name { full native }
                 }
               }
             }`;
             try {
                 const data = await fetchAniList(query, { search: focused });
-                return interaction.respond((data?.Page?.characters || []).map(character => ({
-                    name: `${character.name?.full || 'Unknown'} (${character.id})`.substring(0, 100),
-                    value: (character.name?.full || focused).substring(0, 100)
-                })));
+                const choices = (data?.Page?.characters || [])
+                    .map(character => {
+                        const title = character.name?.full || character.name?.native || focused;
+                        return {
+                            name: `${title} (${character.id})`.substring(0, 100),
+                            value: title.substring(0, 100)
+                        };
+                    });
+                return interaction.respond(choices);
             } catch (err) {
-                console.error('Character autocomplete error:', err);
+                console.error('Character autocomplete error:', err.message);
                 return interaction.respond([]);
             }
         }
