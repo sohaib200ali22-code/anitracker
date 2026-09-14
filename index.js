@@ -1299,15 +1299,18 @@ if (interaction.isButton()) {
             gender
             age
             dateOfBirth { year month day }
+            bloodType
             favourites
             siteUrl
-            media (perPage: 5, sort: POPULARITY_DESC) {
+            media (perPage: 10, sort: POPULARITY_DESC) {
               edges {
-                voiceActors (language: JAPANESE) {
-                  name { full }
-                }
                 node {
                   title { romaji english }
+                }
+                voiceActors {
+                  name { full }
+                  language
+                  siteUrl
                 }
               }
             }
@@ -1328,8 +1331,8 @@ if (interaction.isButton()) {
         }
 
         const altNames = char.name?.alternative?.filter(Boolean).join(', ') || 'N/A';
-        const dob = (char.dateOfBirth && (char.dateOfBirth.month || char.dateOfBirth.day))
-            ? `${char.dateOfBirth.month ?? '?'}/${char.dateOfBirth.day ?? '?'}`
+        const dob = char.dateOfBirth && (char.dateOfBirth.year || char.dateOfBirth.month || char.dateOfBirth.day)
+            ? [char.dateOfBirth.year, char.dateOfBirth.month, char.dateOfBirth.day].filter(value => value != null).join('-')
             : 'N/A';
 
         let cleanDesc = char.description ? char.description
@@ -1338,30 +1341,36 @@ if (interaction.isButton()) {
             .replace(/<[^>]*>/gm, '') : 'No description available.';
         if (cleanDesc.length > 4000) cleanDesc = cleanDesc.substring(0, 4000) + '...';
 
-        const appearsIn = char.media?.edges
-            ?.map(e => e.node?.title?.english || e.node?.title?.romaji)
+        const works = char.media?.edges
+            ?.map(edge => {
+                const title = edge.node?.title?.english || edge.node?.title?.romaji;
+                if (!title) return null;
+                const voiceActors = edge.voiceActors
+                    ?.filter(actor => actor.name?.full)
+                    .map(actor => `${actor.name.full}${actor.language ? ` (${actor.language})` : ''}`)
+                    .join(', ');
+                return `• ${title}${voiceActors ? ` — VA: ${voiceActors}` : ''}`;
+            })
             .filter(Boolean)
-            .slice(0, 5)
             .join('\n') || 'N/A';
-
-        const voiceActorJP = char.media?.edges?.find(e => e.voiceActors?.[0]?.name?.full)?.voiceActors?.[0]?.name?.full || 'N/A';
 
         const embed = new EmbedBuilder()
             .setTitle(`📖 ${char.name?.full || 'Unknown'} — More Info`)
             .setURL(char.siteUrl || 'https://anilist.co')
-            .setDescription('Click **More Info** for the full biography and character details.')
+            .setDescription(cleanDesc)
             .setThumbnail(char.image?.large || 'https://i.imgur.com/AGv4yDI.png')
             .addFields(
                 { name: 'Native Name', value: char.name?.native || 'N/A', inline: true },
+                { name: 'Alternative Names', value: altNames.length > 1024 ? `${altNames.substring(0, 1021)}...` : altNames, inline: false },
                 { name: 'Gender', value: char.gender || 'N/A', inline: true },
                 { name: 'Age', value: char.age || 'N/A', inline: true },
                 { name: 'Date of Birth', value: dob, inline: true },
+                { name: 'Blood Type', value: char.bloodType || 'N/A', inline: true },
                 { name: 'Favorites', value: `${char.favourites ? char.favourites.toLocaleString() : 0}`, inline: true },
-                { name: 'Voice Actor (JP)', value: voiceActorJP, inline: true },
-                { name: 'Appears In', value: appearsIn, inline: false },
-                { name: 'Alternative Names', value: altNames, inline: false }
+                { name: 'Works and Voice Actors', value: works.length > 1024 ? `${works.substring(0, 1021)}...` : works, inline: false }
             )
-            .setColor('#9b59b6');
+            .setColor('#9b59b6')
+            .setFooter({ text: 'AniTracker • Character details from AniList' });
 
         await interaction.editReply({ embeds: [embed] });
     }
