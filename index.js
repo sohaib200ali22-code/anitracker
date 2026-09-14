@@ -520,7 +520,7 @@ const allCommands = [
             .setName('health')
             .setDescription('(Owner only) Check AniTracker service health'),
     new SlashCommandBuilder()
-        .setName('unverifyage')
+        .setName('unverify')
         .setDescription('(Owner only) Remove 18+ age verification for a user')
         .addUserOption(option =>
             option.setName('user')
@@ -571,7 +571,7 @@ const allCommands = [
             )
     ),
     new SlashCommandBuilder()
-        .setName('verifyage')
+        .setName('verify')
         .setDescription('(Owner only) Approve a user for 18+ genre recommendations')
         .addUserOption(option =>
             option.setName('user')
@@ -589,7 +589,7 @@ const OWNER_COMMAND_NAMES = new Set([
     'testalert',
     'health'
 ]);
-const SERVER_ONLY_OWNER_COMMAND_NAMES = new Set(['verifyage', 'unverifyage']);
+const SERVER_ONLY_OWNER_COMMAND_NAMES = new Set(['verify', 'unverify']);
 const commands = allCommands.filter(command =>
     !OWNER_COMMAND_NAMES.has(command.name) && !SERVER_ONLY_OWNER_COMMAND_NAMES.has(command.name)
 );
@@ -605,6 +605,30 @@ const globalOwnerCommands = allCommands
         ...command,
         default_member_permissions: PermissionFlagsBits.Administrator.toString()
     }));
+
+const BOT_OWNER_ID = process.env.DEV_USER_ID || '1326815636395003966';
+
+async function sendDevAlert(interaction, message) {
+    const ownerId = process.env.DEV_USER_ID || '1326815636395003966';
+    const content = `🚨 **[Dev Alert]** ${message}`;
+
+    if (interaction.user?.id === ownerId) {
+        try {
+            return await interaction.followUp({ content, flags: MessageFlags.Ephemeral });
+        } catch (err) {
+            console.warn('Could not show Dev Alert:', err.message);
+            return;
+        }
+    }
+
+    try {
+        const owner = await interaction.client.users.fetch(ownerId);
+        await owner.send(content);
+    } catch (err) {
+        console.warn('Could not send Dev Alert DM:', err.message);
+    }
+}
+
 client.once('clientReady', async () => {
     console.log(`Logged in as ${client.user.tag}!`);
 
@@ -828,13 +852,7 @@ if (interaction.isStringSelectMenu()) {
 
                     await interaction.editReply({ content: '', embeds: [fallbackEmbed], components: [] });
 
-                    const DEV_ID = '1326815636395003966';
-                    if (interaction.user.id === DEV_ID) {
-                        await interaction.followUp({
-                            content: '🚨 **[Dev Alert]:** AniList genre lookup was unreachable. Recommendation fetched via Emergency Backup!',
-                            ephemeral: true
-                        });
-                    }
+                    await sendDevAlert(interaction, 'AniList genre lookup was unreachable. Recommendation fetched via Emergency Backup.');
 
                     return;
                 }
@@ -1058,6 +1076,9 @@ if (interaction.isButton()) {
 
     if (interaction.customId.startsWith('media_info_')) {
         await interaction.deferReply({ ephemeral: true });
+        await interaction.message.delete().catch(err => {
+            console.warn('Could not delete media result message:', err.message);
+        });
         const [, , mediaType, mediaId] = interaction.customId.split('_');
         if (!['anime', 'manga'].includes(mediaType) || !Number.isInteger(Number(mediaId))) {
             return interaction.editReply({ content: '❌ This media action is no longer valid. Please run the search again.', ephemeral: true });
@@ -1144,6 +1165,7 @@ if (interaction.isButton()) {
 
             return interaction.editReply({
                 embeds: [details],
+                components: []
                 components: buildMediaButtons(media, interaction, mediaType, true)
             });
         } catch (err) {
@@ -1162,6 +1184,9 @@ if (interaction.isButton()) {
 
         await interaction.deferReply({ ephemeral: true });
         const animeId = parseInt(interaction.customId.replace('track_btn_', ''));
+        if (!Number.isInteger(animeId)) {
+            return interaction.editReply('❌ This tracking action is no longer valid. Please run the anime search again.');
+        }
 
         const gqlQuery = `
         query ($id: Int) {
@@ -1183,13 +1208,7 @@ if (interaction.isButton()) {
         }
 
         if (!anime) {
-            const DEV_ID = '1326815636395003966';
-            if (interaction.user.id === DEV_ID) {
-                await interaction.followUp({
-                    content: '🚨 **[Dev Alert]:** AniList unreachable during track operation.',
-                    ephemeral: true
-                });
-            }
+            await sendDevAlert(interaction, 'AniList unreachable during track operation.');
             return await interaction.editReply({ content: '❌ Could not connect to primary services to track this anime. Please try again in a moment.' });
         }
 
@@ -1220,6 +1239,9 @@ if (interaction.isButton()) {
     else if (interaction.customId.startsWith('fav_btn_')) {
         await interaction.deferReply({ ephemeral: true });
         const animeId = parseInt(interaction.customId.replace('fav_btn_', ''));
+        if (!Number.isInteger(animeId)) {
+            return interaction.editReply('❌ This favorite action is no longer valid. Please run the anime search again.');
+        }
 
         const gqlQuery = `
         query ($id: Int) {
@@ -1240,13 +1262,7 @@ if (interaction.isButton()) {
         }
 
         if (!anime) {
-            const DEV_ID = '1326815636395003966';
-            if (interaction.user.id === DEV_ID) {
-                await interaction.followUp({
-                    content: '🚨 **[Dev Alert]:** AniList unreachable during favorite operation.',
-                    ephemeral: true
-                });
-            }
+            await sendDevAlert(interaction, 'AniList unreachable during favorite operation.');
             return await interaction.editReply({ content: '❌ Could not connect to primary services to save favorite. Please try again in a moment.' });
         }
 
@@ -1269,6 +1285,9 @@ if (interaction.isButton()) {
     }
     else if (interaction.customId.startsWith('char_info_')) {
         await interaction.deferReply({ ephemeral: true });
+        await interaction.message.delete().catch(err => {
+            console.warn('Could not delete character result message:', err.message);
+        });
         const charId = parseInt(interaction.customId.replace('char_info_', ''));
 
         const gqlQuery = `
@@ -1305,13 +1324,7 @@ if (interaction.isButton()) {
         }
 
         if (!char) {
-            const DEV_ID = '1326815636395003966';
-            if (interaction.user.id === DEV_ID) {
-                await interaction.followUp({
-                    content: '🚨 **[Dev Alert]:** AniList unreachable during character info fetch.',
-                    ephemeral: true
-                });
-            }
+            await sendDevAlert(interaction, 'AniList unreachable during character info fetch.');
             return await interaction.editReply({ content: '❌ Character information is currently unavailable from primary services.' });
         }
 
@@ -1516,7 +1529,7 @@ else if (commandName === 'verification-status') {
 }
 
    // 🔞 Owner-controlled age verification (Approve)
-else if (commandName === 'verifyage') {
+else if (commandName === 'verify') {
     const DEV_ID = process.env.DEV_USER_ID || '1326815636395003966';
 
     // 1. Owner Check Guard
@@ -1566,7 +1579,7 @@ else if (commandName === 'verifyage') {
         });
 
     } catch (err) {
-        console.error('verifyage command error:', err);
+        console.error('verify command error:', err);
         await interaction.editReply({ 
             content: '❌ Could not save the age verification in database. Please check console logs.' 
         });
@@ -1574,7 +1587,7 @@ else if (commandName === 'verifyage') {
 }
         
     // 🚫 Owner-controlled age unverification (Remove)
-else if (commandName === 'unverifyage') {
+else if (commandName === 'unverify') {
     const DEV_ID = process.env.DEV_USER_ID || '1326815636395003966';
 
     // 1. Owner Check Guard
@@ -1622,7 +1635,7 @@ else if (commandName === 'unverifyage') {
         });
 
     } catch (err) {
-        console.error('unverifyage command error:', err);
+        console.error('unverify command error:', err);
         await interaction.editReply({ 
             content: '❌ Could not remove age verification. Please try again later.' 
         });
@@ -1884,15 +1897,7 @@ else if (commandName === 'character') {
                 await interaction.editReply({ embeds: [embed], components: [row] });
 
                 // تنبيه المطور عبر الـ DM بدلاً من الـ FollowUp العلني
-                const DEV_ID = '1326815636395003966';
-                if (interaction.user.id === DEV_ID) {
-                    try {
-                        const devUser = await interaction.client.users.fetch(DEV_ID);
-                        await devUser.send(`🚨 **[Dev Alert]:** AniList character lookup failed for **"${characterName}"**. Used Emergency Backup (Jikan)!`);
-                    } catch (dmErr) {
-                        console.warn('Could not send Dev Alert DM:', dmErr.message);
-                    }
-                }
+                await sendDevAlert(interaction, `AniList character lookup failed for **"${characterName}"**. Used Emergency Backup (Jikan).`);
 
                 return;
             }
@@ -2033,13 +2038,7 @@ else if (commandName === 'favorite') {
                 await interaction.editReply(`⭐ Added **[${animeTitle}](${siteUrl})** to your personal favorites! You will receive DMs when new episodes drop.`);
 
                 // Dev Alert
-                const DEV_ID = '1326815636395003966';
-                if (interaction.user.id === DEV_ID) {
-                    await interaction.followUp({
-                        content: '🚨 **[Dev Alert]:** AniList was unreachable for `/favorite`. Processed via Emergency Backup (Kitsu)!',
-                        ephemeral: true
-                    });
-                }
+                await sendDevAlert(interaction, 'AniList was unreachable for `/favorite`. Processed via Emergency Backup (Kitsu).');
 
                 return;
             }
@@ -2122,13 +2121,7 @@ else if (commandName === 'unfavorite') {
 
                 if (deleted) {
                     // Dev Alert
-                    const DEV_ID = '1326815636395003966';
-                    if (interaction.user.id === DEV_ID) {
-                        await interaction.followUp({
-                            content: '🚨 **[Dev Alert]:** AniList was unreachable for `/unfavorite`. Processed via Emergency Backup (Kitsu)!',
-                            ephemeral: true
-                        });
-                    }
+                    await sendDevAlert(interaction, 'AniList was unreachable for `/unfavorite`. Processed via Emergency Backup (Kitsu).');
                     return await interaction.editReply(`🗑️ Removed **${deleted.animeTitle || animeTitle}** from your personal favorites.`);
                 }
             }
@@ -2321,8 +2314,8 @@ else if (commandName === 'anime') {
                 const currentStatus = (jikanData.status || '').toUpperCase();
                 const isOngoing = currentStatus.includes('RELEASING') || currentStatus.includes('CURRENT') || currentStatus.includes('AIRING');
 
-                if (isOngoing) {
-                    const animeIdentifier = jikanData.id || encodeURIComponent(searchQuery.replace(/\s+/g, '_'));
+                if (isOngoing && Number.isInteger(Number(jikanData.id))) {
+                    const animeIdentifier = Number(jikanData.id);
 
                     const fallbackFavBtn = new ButtonBuilder()
                         .setCustomId(`fav_btn_${animeIdentifier}`)
@@ -2345,15 +2338,7 @@ else if (commandName === 'anime') {
                 await interaction.editReply({ embeds: [fallbackEmbed], components: fallbackComponents });
 
                 // تنبيه المطور عبر الـ DM بدلاً من الـ FollowUp
-                const DEV_ID = '1326815636395003966';
-                if (interaction.user.id === DEV_ID) {
-                    try {
-                        const devUser = await interaction.client.users.fetch(DEV_ID);
-                        await devUser.send(`🚨 **[Dev Alert]:** AniList was unreachable for **"${searchQuery}"**. Fetched via Emergency Backup!`);
-                    } catch (dmErr) {
-                        console.warn('Could not send Dev Alert DM:', dmErr.message);
-                    }
-                }
+                await sendDevAlert(interaction, `AniList was unreachable for **"${searchQuery}"**. Fetched via Emergency Backup.`);
 
                 return;
             }
@@ -2636,15 +2621,7 @@ else if (commandName === 'manga') {
                 await interaction.editReply({ embeds: [fallbackEmbed], components: [] });
 
                 // تنبيه المطور عبر الـ DM بدلاً من الـ FollowUp
-                const DEV_ID = '1326815636395003966';
-                if (interaction.user.id === DEV_ID) {
-                    try {
-                        const devUser = await interaction.client.users.fetch(DEV_ID);
-                        await devUser.send(`🚨 **[Dev Alert]:** AniList was unreachable for Manga **"${searchQuery}"**. Fetched via Backup!`);
-                    } catch (dmErr) {
-                        console.warn('Could not send Dev Alert DM:', dmErr.message);
-                    }
-                }
+                await sendDevAlert(interaction, `AniList was unreachable for Manga **"${searchQuery}"**. Fetched via Backup.`);
 
                 return;
             }
@@ -2798,15 +2775,7 @@ else if (commandName === 'track') {
                 await interaction.editReply({ embeds: [embed] });
 
                 // تنبيه المطور عبر الـ DM
-                const DEV_ID = '1326815636395003966';
-                if (interaction.user.id === DEV_ID) {
-                    try {
-                        const devUser = await interaction.client.users.fetch(DEV_ID);
-                        await devUser.send(`🚨 **[Dev Alert]:** AniList was unreachable for \`/track\` (${searchQuery}). Processed via Emergency Backup (Kitsu)!`);
-                    } catch (dmErr) {
-                        console.warn('Could not send Dev Alert DM:', dmErr.message);
-                    }
-                }
+                await sendDevAlert(interaction, `AniList was unreachable for \`/track\` (${searchQuery}). Processed via Emergency Backup (Kitsu).`);
 
                 return;
             }
@@ -2912,13 +2881,7 @@ else if (commandName === 'untrack') {
 
                 if (deleted) {
                     // Dev Alert
-                    const DEV_ID = '1326815636395003966';
-                    if (interaction.user.id === DEV_ID) {
-                        await interaction.followUp({
-                            content: '🚨 **[Dev Alert]:** AniList was unreachable for `/untrack`. Processed via Emergency Backup (Kitsu)!',
-                            flags: 64
-                        });
-                    }
+                    await sendDevAlert(interaction, 'AniList was unreachable for `/untrack`. Processed via Emergency Backup (Kitsu).');
                     return await interaction.editReply(`🛑 Stopped tracking **${deleted.animeTitle || animeTitle}** in this server.`);
                 }
             }
@@ -3091,29 +3054,35 @@ async function runUpdateChecks() {
         
         for (const item of tracked) {
             try {
+                const isKitsu = item.source === 'kitsu' || String(item.animeId).startsWith('kitsu_');
                 const animeId = Number(item.animeId);
-                if (item.source === 'kitsu' || !Number.isInteger(animeId)) {
+                if (!isKitsu && !Number.isInteger(animeId)) {
                     continue;
                 }
 
-                const gqlQuery = `
-                query ($id: Int) {
-                  Media (id: $id, type: ANIME) {
-                    id
-                    title { romaji english }
-                    episodes
-                    status
-                    coverImage { large }
-                    siteUrl
-                    nextAiringEpisode { episode }
-                  }
-                }`;
+                let anime;
+                if (isKitsu) {
+                    anime = await fetchKitsuAnime(String(item.animeId).replace(/^kitsu_/, ''));
+                } else {
+                    const gqlQuery = `
+                    query ($id: Int) {
+                      Media (id: $id, type: ANIME) {
+                        id
+                        title { romaji english }
+                        episodes
+                        status
+                        coverImage { large }
+                        siteUrl
+                        nextAiringEpisode { episode }
+                      }
+                    }`;
 
-                const data = await fetchAniList(gqlQuery, { id: animeId });
-                const anime = data?.Media;
+                    const data = await fetchAniList(gqlQuery, { id: animeId });
+                    anime = data?.Media;
+                }
 
                 if (anime) {
-                    const currentEps = getAiredEpisodes(anime);
+                    const currentEps = isKitsu ? anime.episodes : getAiredEpisodes(anime);
                     const lastEps = item.lastEpisodes || 0;
 
                     if (currentEps > lastEps) {
@@ -3125,9 +3094,9 @@ async function runUpdateChecks() {
                         const channel = await client.channels.fetch(item.channelId).catch(() => null);
 
                         if (channel) {
-                            const animeTitle = (anime.title && (anime.title.english || anime.title.romaji)) || item.animeTitle;
+                            const animeTitle = (anime.title && (anime.title.english || anime.title.romaji)) || anime.title || item.animeTitle;
                             const siteUrl = anime.siteUrl || 'https://anilist.co';
-                            const coverUrl = (anime.coverImage && anime.coverImage.large) || 'https://i.imgur.com/AGv4yDI.png';
+                            const coverUrl = (anime.coverImage && anime.coverImage.large) || anime.image || 'https://i.imgur.com/AGv4yDI.png';
 
                             const embed = new EmbedBuilder()
                                 .setTitle('🚨 New Episode Alert!')
