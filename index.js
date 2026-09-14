@@ -256,7 +256,7 @@ function cleanMediaDescription(description, maxLength = 180) {
     return clean.length > maxLength ? `${clean.substring(0, maxLength).trim()}...` : clean;
 }
 
-function buildMediaButtons(media, interaction, mediaType = 'anime') {
+function buildMediaButtons(media, interaction, mediaType = 'anime', alreadyViewed = false) {
     const id = String(media.id);
     const buttons = [];
 
@@ -276,8 +276,9 @@ function buildMediaButtons(media, interaction, mediaType = 'anime') {
 
     buttons.push(new ButtonBuilder()
         .setCustomId(`media_info_${mediaType}_${id}`)
-        .setLabel('📖 More Info')
-        .setStyle(ButtonStyle.Secondary));
+        .setLabel(alreadyViewed ? '📘 Details Opened' : '📖 More Info')
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(alreadyViewed));
 
     if (media.siteUrl) {
         buttons.push(new ButtonBuilder()
@@ -992,6 +993,24 @@ if (interaction.isButton()) {
         });
     }
 
+    if (interaction.customId === 'start_help') {
+        const helpEmbed = new EmbedBuilder()
+            .setTitle('🤖 AniTracker Help')
+            .setDescription('Use the commands below to search, track, and manage your anime library.')
+            .addFields(
+                { name: '🔎 Search', value: '`/anime` • `/manga` • `/character` • `/genre`', inline: false },
+                { name: '📢 Tracking', value: '`/track` • `/untrack` • `/mytracked` • `/setup`', inline: false },
+                { name: '⭐ Personal', value: '`/favorite` • `/myfavorites` • `/settings` • `/schedule`', inline: false },
+                { name: '🧭 Start', value: '`/start` • `/help`', inline: false }
+            )
+            .setColor('#9b59b6');
+
+        return interaction.reply({
+            embeds: [helpEmbed],
+            flags: MessageFlags.Ephemeral
+        });
+    }
+
     if (interaction.customId === 'schedule_change_timezone') {
         const modal = new ModalBuilder()
             .setCustomId('settings_timezone_modal')
@@ -1045,7 +1064,7 @@ if (interaction.isButton()) {
         await interaction.deferReply({ ephemeral: true });
         const [, , mediaType, mediaId] = interaction.customId.split('_');
         if (!['anime', 'manga'].includes(mediaType) || !Number.isInteger(Number(mediaId))) {
-            return interaction.editReply('❌ This media action is no longer valid. Please run the search again.');
+            return interaction.editReply({ content: '❌ This media action is no longer valid. Please run the search again.', ephemeral: true });
         }
         const gqlQuery = `
         query ($id: Int, $type: MediaType) {
@@ -1066,6 +1085,20 @@ if (interaction.isButton()) {
             coverImage { large }
             siteUrl
             trailer { id site }
+            characters(page: 1, perPage: 8, sort: FAVOURITES_DESC) {
+              nodes {
+                id
+                name { full }
+                image { large }
+              }
+            }
+            relations {
+              nodes {
+                id
+                type
+                title { romaji english }
+              }
+            }
           }
         }`;
 
@@ -1076,10 +1109,19 @@ if (interaction.isButton()) {
             });
             const media = data?.Media;
             if (!media) {
-                return interaction.editReply('❌ More information is currently unavailable.');
+                return interaction.editReply({ content: '❌ More information is currently unavailable.', ephemeral: true });
             }
 
             const title = media.title?.english || media.title?.romaji || 'Unknown title';
+            const seasonText = media.season && media.seasonYear
+                ? `${media.season.charAt(0).toUpperCase() + media.season.slice(1).toLowerCase()} ${media.seasonYear}`
+                : (media.season ? media.season : 'N/A');
+            const characterList = media.characters?.nodes?.map(character => character.name?.full).filter(Boolean).slice(0, 8).join(', ') || 'N/A';
+            const relatedList = media.relations?.nodes?.filter(item => item.title?.english || item.title?.romaji)
+                .slice(0, 5)
+                .map(item => item.title?.english || item.title?.romaji)
+                .join(', ') || 'N/A';
+
             const details = new EmbedBuilder()
                 .setTitle(`📖 ${title}`)
                 .setURL(media.siteUrl || 'https://anilist.co')
@@ -1090,19 +1132,27 @@ if (interaction.isButton()) {
                     { name: 'Status', value: media.status || 'N/A', inline: true },
                     { name: 'Score', value: media.averageScore ? `${media.averageScore} / 100` : 'N/A', inline: true },
                     { name: mediaType === 'manga' ? 'Chapters' : 'Episodes', value: `${mediaType === 'manga' ? (media.chapters ?? 'N/A') : (media.episodes ?? 'N/A')}`, inline: true },
+                    { name: 'Season', value: seasonText, inline: true },
                     { name: 'Genres', value: media.genres?.slice(0, 8).join(', ') || 'N/A', inline: false },
+                    { name: 'Main Characters', value: characterList, inline: false },
+                    { name: 'Related / Seasons', value: relatedList, inline: false },
                     { name: 'Studios', value: media.studios?.nodes?.map(studio => studio.name).slice(0, 5).join(', ') || 'N/A', inline: false }
                 )
                 .setColor('#3498db')
                 .setFooter({ text: 'AniTracker • More Info' });
 
+            if (interaction.message) {
+                const disabledButtons = buildMediaButtons(media, interaction, mediaType, true);
+                await interaction.message.edit({ components: disabledButtons });
+            }
+
             return interaction.editReply({
                 embeds: [details],
-                components: buildMediaButtons(media, interaction, mediaType)
+                components: buildMediaButtons(media, interaction, mediaType, true)
             });
         } catch (err) {
             console.error('Media info button error:', err);
-            return interaction.editReply('❌ Failed to load more information. Please try again later.');
+            return interaction.editReply({ content: '❌ Failed to load more information. Please try again later.', ephemeral: true });
         }
     }
 
@@ -1369,68 +1419,63 @@ if (interaction.isButton()) {
 // 🚀 Start Command
 // -------------------------------------------------------------
 if (commandName === 'start') {
-    // 1️⃣ حجز الرد لمنع الـ Timeout وتحديد إنه مخفي (Ephemeral)
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     const embed = new EmbedBuilder()
         .setTitle('🚀 Welcome to AniTracker')
-        .setDescription('Search anime and manga, discover new favorites, and get episode alerts without leaving Discord.')
+        .setDescription('Search anime and manga, keep track of weekly releases, save favorites, and get alerts without leaving Discord.')
         .addFields(
-            { name: '🔎 Discover', value: '`/anime` • `/manga` • `/character` • `/genre`' },
-            { name: '⭐ Personal', value: '`/favorite` • `/myfavorites` • `/schedule`' },
-            { name: '📢 Server Alerts', value: 'Use `/setup` once, then `/track` for new episode alerts.' },
-            { name: '⚙️ Customize', value: 'Use `/settings` for timezone and notification preferences.' }
+            { name: '🔎 Discover', value: '`/anime` • `/manga` • `/character` • `/genre`', inline: false },
+            { name: '📢 Tracking', value: '`/track` • `/untrack` • `/mytracked` • `/setup`', inline: false },
+            { name: '⭐ Personal', value: '`/favorite` • `/myfavorites` • `/schedule` • `/settings`', inline: false },
+            { name: '💡 Quick Start', value: 'Run `/anime <title>` or `/manga <title>`, then use the buttons for more info, share, and alerts.', inline: false }
         )
         .setColor('#2ecc71')
         .setThumbnail(client.user.displayAvatarURL())
-        .setFooter({ text: 'AniTracker • Developed for Anime Lovers' });
+        .setFooter({ text: 'AniTracker • Ready to explore' });
 
-    // 2️⃣ الأزرار (سيرفر الدعم + إضافة البوت + دليل المستخدم)
     const supportBtn = new ButtonBuilder()
         .setLabel('💬 Support Server')
         .setStyle(ButtonStyle.Link)
         .setURL('https://discord.gg/H4Af2y4RD8');
 
     const inviteBtn = new ButtonBuilder()
-        .setLabel('➕ Add to Server')
+        .setLabel('➕ Add Bot')
         .setStyle(ButtonStyle.Link)
         .setURL(`https://discord.com/oauth2/authorize?client_id=${client.user.id}&scope=bot%20applications.commands&permissions=8`);
 
-    const guideBtn = new ButtonBuilder()
+    const helpBtn = new ButtonBuilder()
         .setLabel('📖 Help')
-        .setStyle(ButtonStyle.Link)
-        .setURL('https://discord.gg/H4Af2y4RD8');
+        .setStyle(ButtonStyle.Secondary)
+        .setCustomId('start_help');
 
     const settingsBtn = new ButtonBuilder()
         .setCustomId('start_settings')
         .setLabel('⚙️ Settings')
         .setStyle(ButtonStyle.Secondary);
 
-    const row = new ActionRowBuilder().addComponents(supportBtn, inviteBtn, guideBtn, settingsBtn);
+    const row = new ActionRowBuilder().addComponents(supportBtn, inviteBtn, helpBtn, settingsBtn);
 
-    // لو الأمر شغال في الخاص مباشرة (DMs)
     if (!interaction.guildId) {
         return interaction.editReply({ embeds: [embed], components: [row] });
     }
 
-    // 3️⃣ محاولة إرسال الدليل في الخاص للمستخدم
     try {
         await interaction.user.send({ embeds: [embed], components: [row] });
         await interaction.editReply({
-            content: '📥 Check your Direct Messages! I sent you the getting started guide.'
+            content: '📥 I sent the setup guide to your DMs.'
         });
     } catch (error) {
-        // لو المستخدم قافل الـ DMs
         if (error.code === 50007) {
             await interaction.editReply({
-                content: '⚠️ Couldn\'t send you a DM! Please open your Direct Messages in privacy settings.',
+                content: '⚠️ I could not send a DM. Please allow DMs and try again.',
                 embeds: [embed],
                 components: [row]
             });
         } else {
             console.error('Failed to send start DM:', error);
             await interaction.editReply({
-                content: '❌ An error occurred while executing this command.',
+                content: '❌ Something went wrong while opening the guide.',
                 embeds: [embed],
                 components: [row]
             });
@@ -2161,44 +2206,28 @@ else if (commandName === 'help') {
     const canSeeSetup = interaction.guildId && canRunServerSetup(interaction);
     const embed = new EmbedBuilder()
         .setTitle('🤖 AniTracker Command Center')
-        .setDescription('Search, discover, track, and personalize your anime experience.\nUse the buttons below for support or developer contact.')
+        .setDescription('Search, track, and manage your anime and manga experience from Discord.')
         .addFields(
-            { 
-                name: '🔎 Discover', 
-                value: 
-                    '`/anime`  Search anime details and quick actions\n' +
-                    '`/manga`  Search manga details\n' +
-                    '`/character`  Search anime characters\n' +
-                    '`/genre`  Get recommendations by category\n' +
-                    '`/schedule`  View today\'s release schedule'
+            {
+                name: '🔎 Discover',
+                value: '`/anime` • Search anime\n`/manga` • Search manga\n`/character` • Search characters\n`/genre` • Recommendations by category\n`/schedule` • Daily release schedule'
             },
-            { 
-                name: '⭐ Personal Favorites', 
-                value: 
-                    '`/favorite`  Add anime and receive episode DMs\n' +
-                    '`/unfavorite`  Remove an anime from favorites\n' +
-                    '`/myfavorites`  View your saved favorites\n' +
-                    '`/settings`  Change timezone and notification preferences\n' +
-                    '`/verification-status`  Check your 18+ access status'
+            {
+                name: '⭐ Personal',
+                value: '`/favorite` • Save anime for DM alerts\n`/unfavorite` • Remove a favorite\n`/myfavorites` • View your list\n`/verification-status` • Check 18+ access\n`/settings` • Timezone and notification preferences'
             },
-            { 
-                name: '📢 Server Tracking', 
-                value: 
-                    '`/track`  Track anime episode alerts\n' +
-                    '`/untrack`  Stop tracking an anime\n' +
-                    '`/mytracked`  View tracked anime'
+            {
+                name: '📢 Server Tools',
+                value: '`/track` • Track anime alerts\n`/untrack` • Stop tracking\n`/mytracked` • View tracked titles\n`/setup` • Setup the alert channel'
             },
-            { 
-                name: '🧭 Getting Started', 
-                value: 
-                    '`/start`  Open the welcome guide\n' +
-                    '`/help`  Show this command guide' +
-                    (canSeeSetup ? '\n`/setup`  Configure permissions and the alert channel' : '')
+            {
+                name: '🧭 Start Here',
+                value: '`/start` • Welcome guide\n`/help` • This command list'
             }
         )
         .setColor('#9b59b6')
         .setThumbnail(client.user.displayAvatarURL())
-        .setFooter({ text: 'AniTracker • Times use your saved timezone' })
+        .setFooter({ text: 'AniTracker • Everything you need to get started' })
         .setTimestamp();
 
     const supportBtn = new ButtonBuilder()
@@ -2206,18 +2235,22 @@ else if (commandName === 'help') {
         .setStyle(ButtonStyle.Link)
         .setURL('https://discord.gg/H4Af2y4RD8');
 
+    const settingsBtn = new ButtonBuilder()
+        .setCustomId('start_settings')
+        .setLabel('⚙️ Settings')
+        .setStyle(ButtonStyle.Secondary);
+
     const profileBtn = new ButtonBuilder()
         .setLabel('👤 Developer Profile')
         .setStyle(ButtonStyle.Link)
         .setURL('https://discord.com/users/1326815636395003966');
 
-    const row = new ActionRowBuilder().addComponents(supportBtn, profileBtn);
+    const row = new ActionRowBuilder().addComponents(supportBtn, settingsBtn, profileBtn);
 
-    // إرسال الرد مخفي للمستخدم فقط
-    await interaction.reply({ 
-        embeds: [embed], 
-        components: [row], 
-        flags: MessageFlags.Ephemeral 
+    await interaction.reply({
+        embeds: [embed],
+        components: [row],
+        flags: MessageFlags.Ephemeral
     });
 }
 
