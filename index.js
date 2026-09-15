@@ -264,11 +264,21 @@ function buildSavedMediaMenu(customId, items, placeholder) {
     const menu = new StringSelectMenuBuilder()
         .setCustomId(customId)
         .setPlaceholder(placeholder)
+        .setMinValues(1)
+        .setMaxValues(1)
         .addOptions(items.slice(0, 25).map(item => ({
             label: `${item.mediaType === 'manga' ? 'Manga' : 'Anime'}: ${item.animeTitle}`.substring(0, 100),
             value: String(item._id)
         })));
     return new ActionRowBuilder().addComponents(menu);
+}
+
+function buildSavedMediaComponents(customId, items, placeholder, resetKind) {
+    const components = [buildSavedMediaMenu(customId, items, placeholder)];
+    if (items.length > 0) {
+        components.push(buildResetButton(resetKind));
+    }
+    return components;
 }
 
 function buildResetButton(kind) {
@@ -2494,10 +2504,12 @@ else if (commandName === 'myfavorites') {
 
         await interaction.editReply({
            content: '⭐ Choose a saved anime or manga to view its details:',
-            components: [
-                buildSavedMediaMenu('myfavorites_select', favorites, 'Choose a saved anime or manga'),
-                buildResetButton('favorites')
-            ]
+            components: buildSavedMediaComponents(
+                'myfavorites_select',
+                favorites,
+                'Choose a saved anime or manga',
+                'favorites'
+            )
         });
 
     } catch (err) {
@@ -2883,7 +2895,7 @@ else if (commandName === 'manga') {
             .setTitle(manga.title)
             .setURL(manga.siteUrl)
             .setThumbnail(manga.image)
-            .setDescription(`${cleanMediaDescription(manga.description, 320)}\n\nClick **More Info** for more details.`)
+            .setDescription(`${cleanMediaDescription(manga.description, 320)}\n\nClick "More Info" for more details.`)
             .addFields(
                 { name: 'Chapters', value: `${manga.chapters || 'N/A'}`, inline: true },
                 { name: 'Volumes', value: `${manga.volumes || 'N/A'}`, inline: true },
@@ -2951,7 +2963,7 @@ else if (commandName === 'manga') {
                         { name: 'Status', value: jikanData.status || 'N/A', inline: true },
                         { name: 'Score', value: jikanData.score ? `${jikanData.score}` : 'N/A', inline: true }
                     )
-                    .setDescription('Click **More Info** for the full synopsis and details.')
+                    .setDescription('Click "More Info" for more details.')
                     .setColor('#33FF57')
                     .setFooter({ text: 'AniTracker • Manga Search (Backup API)' });
 
@@ -3004,7 +3016,7 @@ else if (commandName === 'manga') {
                 { name: 'Status', value: manga.status || 'N/A', inline: true },
                 { name: 'Score', value: manga.averageScore ? `${manga.averageScore} / 100` : 'N/A', inline: true }
             )
-            .setDescription('Click **More Info** for the full synopsis and details.')
+            .setDescription('Click "More Info" for more details.')
             .setColor('#33FF57')
             .setFooter({ text: 'AniTracker • Manga Search' });
 
@@ -3292,10 +3304,12 @@ else if (commandName === 'mytracked') {
 
         await interaction.editReply({
            content: '📌 Choose a tracked anime or manga to view its details:',
-            components: [
-                buildSavedMediaMenu('mytracked_select', items, 'Choose a tracked anime or manga'),
-                buildResetButton('tracked')
-            ]
+            components: buildSavedMediaComponents(
+                'mytracked_select',
+                items,
+                'Choose a tracked anime or manga',
+                'tracked'
+            )
         });
     } catch (err) {
         console.error('MyTracked Command Error:', err);
