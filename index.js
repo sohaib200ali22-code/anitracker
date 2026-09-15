@@ -21,6 +21,7 @@ const TrackSchema = new mongoose.Schema({
     channelId: String,
     animeId: String,
     animeTitle: String,
+    mediaType: { type: String, enum: ['anime', 'manga'], default: 'anime' },
     lastEpisodes: Number,
     lastStatus: String,
     source: { type: String, default: 'anilist' }
@@ -32,6 +33,7 @@ const FavoriteSchema = new mongoose.Schema({
     userId: String,
     animeId: String,
     animeTitle: String,
+    mediaType: { type: String, enum: ['anime', 'manga'], default: 'anime' },
     lastEpisodes: Number,
     source: { type: String, default: 'anilist' }
 });
@@ -45,6 +47,59 @@ async function findExistingFavorite(userId, animeId, animeTitle) {
             { animeTitle }
         ]
     });
+}
+
+async function fetchMangaDexSearch(search) {
+    const response = await axios.get('https://api.mangadex.org/manga', {
+        params: {
+            title: search,
+            limit: 1,
+            'includes[]': 'cover_art',
+            'contentRating[]': ['safe', 'suggestive', 'erotica']
+        },
+        timeout: 10000
+    });
+    const item = response.data?.data?.[0];
+    if (!item) return null;
+
+    const attributes = item.attributes || {};
+    const title = attributes.title?.en
+        || Object.values(attributes.title || {})[0]
+        || search;
+    const description = attributes.description?.en
+        || Object.values(attributes.description || {})[0]
+        || 'No synopsis available.';
+    const cover = item.relationships?.find(relation => relation.type === 'cover_art');
+    const coverUrl = cover?.attributes?.fileName
+        ? `https://uploads.mangadex.org/covers/${item.id}/${cover.attributes.fileName}.256.jpg`
+        : 'https://i.imgur.com/AGv4yDI.png';
+
+    return {
+        id: item.id,
+        title,
+        description,
+        status: attributes.status?.toUpperCase() || 'UNKNOWN',
+        chapters: attributes.lastChapter || 0,
+        volumes: attributes.lastVolume || 0,
+        image: coverUrl,
+        siteUrl: `https://mangadex.org/title/${item.id}`,
+        source: 'mangadex'
+    };
+}
+
+async function fetchMangaDexLatestChapter(mangaId) {
+    const response = await axios.get('https://api.mangadex.org/chapter', {
+        params: {
+            'manga[]': mangaId,
+            'translatedLanguage[]': 'en',
+            'order[chapter]': 'desc',
+            limit: 1
+        },
+        timeout: 10000
+    });
+    const chapter = response.data?.data?.[0]?.attributes?.chapter;
+    const numericChapter = Number.parseFloat(chapter);
+    return Number.isFinite(numericChapter) ? numericChapter : 0;
 }
 
 const UserSettingsSchema = new mongoose.Schema({
@@ -205,6 +260,39 @@ function buildSetupChannelMenu() {
     return new ActionRowBuilder().addComponents(menu);
 }
 
+function buildSavedMediaMenu(customId, items, placeholder) {
+    const menu = new StringSelectMenuBuilder()
+        .setCustomId(customId)
+        .setPlaceholder(placeholder)
+        .addOptions(items.slice(0, 25).map(item => ({
+            label: `${item.mediaType === 'manga' ? 'Manga' : 'Anime'}: ${item.animeTitle}`.substring(0, 100),
+            value: String(item._id)
+        })));
+    return new ActionRowBuilder().addComponents(menu);
+}
+
+function buildResetButton(kind) {
+    return new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+            .setCustomId(`reset_${kind}`)
+            .setLabel(`🗑️ Reset all saved ${kind}`)
+            .setStyle(ButtonStyle.Danger)
+    );
+}
+
+function buildResetConfirmation(kind) {
+    return new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+            .setCustomId(`reset_confirm_${kind}`)
+            .setLabel('Yes, delete everything')
+            .setStyle(ButtonStyle.Danger),
+        new ButtonBuilder()
+            .setCustomId(`reset_cancel_${kind}`)
+            .setLabel('Cancel')
+            .setStyle(ButtonStyle.Secondary)
+    );
+}
+
 // FIX: removed GatewayIntentBits.GuildPresences — it's a privileged intent that
 // requires manual approval/toggling in the Discord Developer Portal, and nothing
 // in this bot actually listens to presence events. Guilds is enough for slash commands.
@@ -270,15 +358,15 @@ function buildMediaButtons(media, interaction, mediaType = 'anime', alreadyViewe
     const id = String(media.id);
     const buttons = [];
 
-    const isFinished = media.status === 'FINISHED' || media.status === 'CANCELLED';
-    if (mediaType === 'anime' && !isFinished) {
+    const isFinished = ['FINISHED', 'CANCELLED', 'COMPLETED'].includes(media.status);
+    if (!isFinished) {
         buttons.push(new ButtonBuilder()
-            .setCustomId(`fav_btn_${id}`)
+            .setCustomId(`${mediaType === 'manga' ? 'manga_' : ''}fav_btn_${id}`)
             .setLabel('⭐ Favorite')
             .setStyle(ButtonStyle.Primary));
         if (interaction.guildId) {
             buttons.unshift(new ButtonBuilder()
-                .setCustomId(`track_btn_${id}`)
+                .setCustomId(`${mediaType === 'manga' ? 'manga_' : ''}track_btn_${id}`)
                 .setLabel('🎯 Track')
                 .setStyle(ButtonStyle.Success));
         }
@@ -420,7 +508,12 @@ const allCommands = [
             option.setName('title')
                 .setDescription('Anime title to add to favorites')
                 .setAutocomplete(true)
-                .setRequired(true)),
+                .setRequired(true))
+        .addStringOption(option =>
+            option.setName('media')
+                .setDescription('Save anime or manga')
+                .addChoices({ name: 'Anime', value: 'anime' }, { name: 'Manga', value: 'manga' })
+                .setRequired(false)),
     new SlashCommandBuilder()
         .setName('fav')
         .setDescription('Add an anime to your personal favorites (Receive DM notifications)')
@@ -495,7 +588,12 @@ const allCommands = [
             option.setName('title')
                 .setDescription('Anime title to track')
                 .setAutocomplete(true)
-                .setRequired(true)),
+                .setRequired(true))
+        .addStringOption(option =>
+            option.setName('media')
+                .setDescription('Track anime or manga')
+                .addChoices({ name: 'Anime', value: 'anime' }, { name: 'Manga', value: 'manga' })
+                .setRequired(false)),
     new SlashCommandBuilder()
     .setName('schedule')
     .setDescription('📅 Displays today\'s anime release schedule!'),
@@ -703,6 +801,34 @@ client.on('interactionCreate', async interaction => {
    updateChecker = runUpdateChecks;
    // 🎲 Genre recommendation menus & 🔘 Handle Interactive Buttons
 if (interaction.isStringSelectMenu()) {
+    if (interaction.customId === 'myfavorites_select') {
+        const favorite = await FavoriteItem.findOne({
+            _id: interaction.values[0],
+            userId: interaction.user.id
+        }).lean();
+        if (!favorite) {
+            return interaction.update({ content: '❌ That saved item is no longer available.', components: [] });
+        }
+        return interaction.update({
+            content: `⭐ **${favorite.animeTitle}**\nType: **${favorite.mediaType === 'manga' ? 'Manga' : 'Anime'}**\nUse \`/unfavorite ${favorite.animeTitle}\` to remove it.`,
+            components: []
+        });
+    }
+
+    if (interaction.customId === 'mytracked_select') {
+        const trackedItem = await TrackedItem.findOne({
+            _id: interaction.values[0],
+            guildId: interaction.guildId
+        }).lean();
+        if (!trackedItem) {
+            return interaction.update({ content: '❌ That tracked item is no longer available.', components: [] });
+        }
+        return interaction.update({
+            content: `🎯 **${trackedItem.animeTitle}**\nType: **${trackedItem.mediaType === 'manga' ? 'Manga' : 'Anime'}**\nAlerts: <#${trackedItem.channelId}>`,
+            components: []
+        });
+    }
+
     if (interaction.customId === 'settings_select') {
         const setting = interaction.values[0];
 
@@ -1009,6 +1135,43 @@ if (interaction.isModalSubmit() && interaction.customId === 'settings_timezone_m
 }
 
 if (interaction.isButton()) {
+    if (interaction.customId === 'reset_favorites') {
+        return interaction.update({
+            content: '⚠️ Are you sure? This permanently deletes **all your saved anime and manga favorites** from MongoDB.',
+            components: [buildResetConfirmation('favorites')]
+        });
+    }
+
+    if (interaction.customId === 'reset_tracked') {
+        if (!interaction.guildId) {
+            return interaction.update({ content: '❌ Tracked items can only be reset inside a server.', components: [] });
+        }
+        if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageChannels)) {
+            return interaction.update({ content: '❌ You need **Manage Channels** permission to reset server tracking.', components: [] });
+        }
+        return interaction.update({
+            content: '⚠️ Are you sure? This permanently deletes **all tracked anime and manga in this server** from MongoDB.',
+            components: [buildResetConfirmation('tracked')]
+        });
+    }
+
+    if (interaction.customId === 'reset_cancel_favorites' || interaction.customId === 'reset_cancel_tracked') {
+        return interaction.update({ content: '✅ Reset cancelled. No saved items were changed.', components: [] });
+    }
+
+    if (interaction.customId === 'reset_confirm_favorites') {
+        await FavoriteItem.deleteMany({ userId: interaction.user.id });
+        return interaction.update({ content: '🗑️ All your saved anime and manga favorites were permanently deleted from MongoDB.', components: [] });
+    }
+
+    if (interaction.customId === 'reset_confirm_tracked') {
+        if (!interaction.guildId || !interaction.memberPermissions?.has(PermissionFlagsBits.ManageChannels)) {
+            return interaction.update({ content: '❌ You no longer have permission to reset this server tracking list.', components: [] });
+        }
+        await TrackedItem.deleteMany({ guildId: interaction.guildId });
+        return interaction.update({ content: '🗑️ All tracked anime and manga were permanently deleted from MongoDB.', components: [] });
+    }
+
     if (interaction.customId === 'start_settings') {
         return interaction.reply({
             content: '⚙️ Choose a setting to change:',
@@ -1091,6 +1254,34 @@ if (interaction.isButton()) {
         });
         const [, , mediaId, mediaType] = interaction.customId.split('_');
         if (!['anime', 'manga'].includes(mediaType) || !Number.isInteger(Number(mediaId))) {
+            if (mediaType === 'manga' && /^[0-9a-f-]{36}$/i.test(mediaId)) {
+                try {
+                    const response = await axios.get(`https://api.mangadex.org/manga/${mediaId}`, {
+                        params: { 'includes[]': 'cover_art' },
+                        timeout: 10000
+                    });
+                    const item = response.data?.data;
+                    const title = item?.attributes?.title?.en || Object.values(item?.attributes?.title || {})[0];
+                    if (!item || !title) return interaction.editReply({ content: '❌ Manga information is currently unavailable.', ephemeral: true });
+                    const description = item.attributes.description?.en || Object.values(item.attributes.description || {})[0] || 'No synopsis available.';
+                    const details = new EmbedBuilder()
+                        .setTitle(`📖 ${title}`)
+                        .setURL(`https://mangadex.org/title/${mediaId}`)
+                        .setDescription(cleanMediaDescription(description, 3800))
+                        .addFields(
+                            { name: 'Type', value: 'MANGADEX MANGA', inline: true },
+                            { name: 'Status', value: item.attributes.status?.toUpperCase() || 'N/A', inline: true },
+                            { name: 'Chapters', value: `${item.attributes.lastChapter || 'N/A'}`, inline: true },
+                            { name: 'Volumes', value: `${item.attributes.lastVolume || 'N/A'}`, inline: true }
+                        )
+                        .setColor('#3498db')
+                        .setFooter({ text: 'AniTracker • MangaDex REST API' });
+                    return interaction.editReply({ embeds: [details], components: [] });
+                } catch (err) {
+                    console.error('MangaDex info button error:', err.message);
+                    return interaction.editReply({ content: '❌ Failed to load manga information.', ephemeral: true });
+                }
+            }
             return interaction.editReply({ content: '❌ This media action is no longer valid. Please run the search again.', ephemeral: true });
         }
         const gqlQuery = `
@@ -1180,6 +1371,68 @@ if (interaction.isButton()) {
         } catch (err) {
             console.error('Media info button error:', err);
             return interaction.editReply({ content: '❌ Failed to load more information. Please try again later.', ephemeral: true });
+        }
+    }
+
+    if (interaction.customId.startsWith('manga_track_btn_') || interaction.customId.startsWith('manga_fav_btn_')) {
+        const isTrack = interaction.customId.startsWith('manga_track_btn_');
+        if (isTrack && !interaction.guildId) {
+            return interaction.reply({ content: '🎯 Manga channel tracking works inside a server.', flags: MessageFlags.Ephemeral });
+        }
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+        const mangaId = interaction.customId.replace(isTrack ? 'manga_track_btn_' : 'manga_fav_btn_', '');
+
+        try {
+            let manga = await fetchMangaDexSearch(mangaId);
+            if (!manga || manga.id !== mangaId) {
+                const response = await axios.get(`https://api.mangadex.org/manga/${mangaId}`, {
+                    params: { 'includes[]': 'cover_art' },
+                    timeout: 10000
+                });
+                const item = response.data?.data;
+                const title = item?.attributes?.title?.en || Object.values(item?.attributes?.title || {})[0];
+                if (!item || !title) throw new Error('Manga not found');
+                manga = { id: item.id, title, chapters: item.attributes.lastChapter || 0, status: item.attributes.status?.toUpperCase() || 'UNKNOWN', siteUrl: `https://mangadex.org/title/${item.id}`, source: 'mangadex' };
+            }
+
+            const existingQuery = isTrack
+                ? { guildId: interaction.guildId, animeId: manga.id }
+                : { userId: interaction.user.id, animeId: manga.id };
+            const existing = isTrack
+                ? await TrackedItem.findOne(existingQuery)
+                : await findExistingFavorite(interaction.user.id, manga.id, manga.title);
+            if (existing) {
+                return interaction.editReply(`ℹ️ **${manga.title}** is already saved.`);
+            }
+
+            if (isTrack) {
+                const latestChapter = await fetchMangaDexLatestChapter(manga.id).catch(() => Number(manga.chapters) || 0);
+                await TrackedItem.create({
+                    guildId: interaction.guildId,
+                    channelId: await getServerAlertChannelId(interaction.guildId, interaction.channelId),
+                    animeId: manga.id,
+                    animeTitle: manga.title,
+                    mediaType: 'manga',
+                    lastEpisodes: latestChapter,
+                    lastStatus: manga.status,
+                    source: 'mangadex'
+                });
+                return interaction.editReply(`🎯 Successfully started tracking manga **[${manga.title}](${manga.siteUrl})**.`);
+            }
+
+            const latestChapter = await fetchMangaDexLatestChapter(manga.id).catch(() => Number(manga.chapters) || 0);
+            await FavoriteItem.create({
+                userId: interaction.user.id,
+                animeId: manga.id,
+                animeTitle: manga.title,
+                mediaType: 'manga',
+                lastEpisodes: latestChapter,
+                source: 'mangadex'
+            });
+            return interaction.editReply(`⭐ Added manga **[${manga.title}](${manga.siteUrl})** to your personal favorites.`);
+        } catch (err) {
+            console.error('MangaDex save button error:', err.message);
+            return interaction.editReply('❌ Could not save this manga right now. Please try again later.');
         }
     }
 
@@ -1425,6 +1678,26 @@ if (interaction.isButton()) {
                 return interaction.respond(choices);
             } catch (err) {
                 console.error('Character autocomplete error:', err.message);
+                return interaction.respond([]);
+            }
+        }
+
+        const requestedMedia = interaction.options.getString('media');
+        if (interaction.commandName === 'manga' || (interaction.commandName === 'favorite' && requestedMedia === 'manga')) {
+            try {
+                const response = await axios.get('https://api.mangadex.org/manga', {
+                    params: { title: focused, limit: 8 },
+                    timeout: 8000
+                });
+                const choices = (response.data?.data || []).map(item => {
+                    const title = item.attributes?.title?.en
+                        || Object.values(item.attributes?.title || {})[0]
+                        || focused;
+                    return { name: title.substring(0, 100), value: title.substring(0, 100) };
+                });
+                return interaction.respond(choices);
+            } catch (err) {
+                console.error('MangaDex autocomplete error:', err.message);
                 return interaction.respond([]);
             }
         }
@@ -2012,6 +2285,29 @@ else if (commandName === 'character') {
 else if (commandName === 'favorite') {
     await interaction.deferReply({ ephemeral: true });
     const searchQuery = interaction.options.getString('title');
+    const requestedMedia = interaction.options.getString('media') || 'anime';
+
+    if (requestedMedia === 'manga') {
+        try {
+            const manga = await fetchMangaDexSearch(searchQuery);
+            if (!manga) return interaction.editReply(`❌ No manga found for **"${searchQuery}"** on MangaDex.`);
+            const existing = await findExistingFavorite(interaction.user.id, manga.id, manga.title);
+            if (existing) return interaction.editReply(`⭐ **${manga.title}** is already in your personal favorites!`);
+            const latestChapter = await fetchMangaDexLatestChapter(manga.id).catch(() => Number(manga.chapters) || 0);
+            await FavoriteItem.create({
+                userId: interaction.user.id,
+                animeId: manga.id,
+                animeTitle: manga.title,
+                mediaType: 'manga',
+                lastEpisodes: latestChapter,
+                source: 'mangadex'
+            });
+            return interaction.editReply(`⭐ Added manga **[${manga.title}](${manga.siteUrl})** to your personal favorites.`);
+        } catch (err) {
+            console.error('Favorite MangaDex command error:', err.message);
+            return interaction.editReply('❌ MangaDex is temporarily unavailable. Please try again later.');
+        }
+    }
 
     const gqlQuery = `
     query ($search: String) {
@@ -2187,19 +2483,21 @@ else if (commandName === 'myfavorites') {
     try {
         // 1️⃣ استعلام سريع وخفيف من Mongoose باستخدام select و lean
         const favorites = await FavoriteItem.find({ userId: interaction.user.id })
-            .select('animeTitle')
+            .select('animeTitle mediaType')
             .lean();
 
         if (!favorites || favorites.length === 0) {
             return await interaction.editReply({
-                content: '⭐ You currently have no anime saved in your personal favorites.\nUse `/favorite <title>` to add some!'
+                content: '⭐ You currently have no saved anime or manga favorites.\nUse `/favorite <title>` to add an anime or manga!',
+                components: [buildResetButton('favorites')]
             });
         }
 
         // 2️⃣ بناء القائمة والقطع الذكي لمنع كسر التنسيق
         let descriptionLines = [];
         for (let index = 0; index < favorites.length; index++) {
-            const line = `${index + 1}. **${favorites[index].animeTitle}**`;
+            const mediaLabel = favorites[index].mediaType === 'manga' ? 'Manga' : 'Anime';
+            const line = `${index + 1}. **${favorites[index].animeTitle}** (${mediaLabel})`;
             
             // التحقق من الحجم الكلي لمنع تجاوز 3800 حرف
             const currentTotalLength = descriptionLines.join('\n').length;
@@ -2211,17 +2509,23 @@ else if (commandName === 'myfavorites') {
         }
 
         const embed = new EmbedBuilder()
-            .setTitle('⭐ Your Personal Favorite Anime List')
+            .setTitle('⭐ Your Saved Anime & Manga')
             .setDescription(descriptionLines.join('\n'))
             .setColor('#f39c12')
             .addFields(
-                { name: '📊 Total Favorites', value: `${favorites.length} anime`, inline: true },
+                { name: '📊 Total Favorites', value: `${favorites.length} item(s)`, inline: true },
                 { name: '💡 Tip', value: 'Use `/unfavorite <title>` to remove any anime from your list.', inline: true }
             )
             .setFooter({ text: 'AniTracker • Direct Message notifications enabled for these!' })
             .setTimestamp();
 
-        await interaction.editReply({ embeds: [embed] });
+        await interaction.editReply({
+            embeds: [embed],
+            components: [
+                buildSavedMediaMenu('myfavorites_select', favorites, 'Choose a saved anime or manga'),
+                buildResetButton('favorites')
+            ]
+        });
 
     } catch (err) {
         console.error('MyFavorites command error:', err);
@@ -2243,11 +2547,11 @@ else if (commandName === 'help') {
             },
             {
                 name: '⭐ Personal',
-                value: '`/favorite` • Save anime for DM alerts\n`/unfavorite` • Remove a favorite\n`/myfavorites` • View your list\n`/verification-status` • Check 18+ access\n`/settings` • Timezone and notification preferences'
+                value: '`/favorite` • Save anime or manga for DM alerts\n`/unfavorite` • Remove a favorite\n`/myfavorites` • View and reset your saved list\n`/verification-status` • Check 18+ access\n`/settings` • Timezone and notification preferences'
             },
             {
                 name: '📢 Server Tools',
-                value: '`/track` • Track anime alerts\n`/untrack` • Stop tracking\n`/mytracked` • View tracked titles\n`/setup` • Setup the alert channel'
+                value: '`/track` • Track anime or manga alerts\n`/untrack` • Stop tracking\n`/mytracked` • View and reset tracked titles\n`/setup` • Setup the alert channel'
             },
             {
                 name: '🧭 Start Here',
@@ -2596,6 +2900,34 @@ else if (commandName === 'manga') {
     await interaction.deferReply();
     const searchQuery = interaction.options.getString('title');
 
+    try {
+        const manga = await fetchMangaDexSearch(searchQuery);
+        if (!manga) {
+            return interaction.editReply(`❌ Sorry, no manga found matching **"${searchQuery}"** on MangaDex.`);
+        }
+
+        const embed = new EmbedBuilder()
+            .setTitle(manga.title)
+            .setURL(manga.siteUrl)
+            .setThumbnail(manga.image)
+            .setDescription(cleanMediaDescription(manga.description, 320))
+            .addFields(
+                { name: 'Chapters', value: `${manga.chapters || 'N/A'}`, inline: true },
+                { name: 'Volumes', value: `${manga.volumes || 'N/A'}`, inline: true },
+                { name: 'Status', value: manga.status, inline: true }
+            )
+            .setColor('#33FF57')
+            .setFooter({ text: 'AniTracker • MangaDex REST API' });
+
+        return interaction.editReply({
+            embeds: [embed],
+            components: buildMediaButtons(manga, interaction, 'manga')
+        });
+    } catch (err) {
+        console.error('MangaDex search error:', err.message);
+        return interaction.editReply('❌ MangaDex is temporarily unavailable. Please try again later.');
+    }
+
     const gqlQuery = `
     query ($search: String) {
       Media (search: $search, type: MANGA) {
@@ -2742,6 +3074,32 @@ else if (commandName === 'track') {
 
     await interaction.deferReply();
     const searchQuery = interaction.options.getString('title');
+    const requestedMedia = interaction.options.getString('media') || 'anime';
+
+    if (requestedMedia === 'manga') {
+        try {
+            const manga = await fetchMangaDexSearch(searchQuery);
+            if (!manga) return interaction.editReply(`❌ No manga found for **"${searchQuery}"** on MangaDex.`);
+            const existing = await TrackedItem.findOne({ guildId: interaction.guildId, animeId: manga.id });
+            if (existing) return interaction.editReply(`🎯 **${manga.title}** is already being tracked in this server!`);
+            const latestChapter = await fetchMangaDexLatestChapter(manga.id).catch(() => Number(manga.chapters) || 0);
+            const channelId = await getServerAlertChannelId(interaction.guildId, interaction.channelId);
+            await TrackedItem.create({
+                guildId: interaction.guildId,
+                channelId,
+                animeId: manga.id,
+                animeTitle: manga.title,
+                mediaType: 'manga',
+                lastEpisodes: latestChapter,
+                lastStatus: manga.status,
+                source: 'mangadex'
+            });
+            return interaction.editReply(`🎯 Now tracking manga **[${manga.title}](${manga.siteUrl})** in <#${channelId}>.`);
+        } catch (err) {
+            console.error('Track MangaDex command error:', err.message);
+            return interaction.editReply('❌ MangaDex is temporarily unavailable. Please try again later.');
+        }
+    }
 
     const gqlQuery = `
     query ($search: String) {
@@ -2954,24 +3312,33 @@ else if (commandName === 'mytracked') {
     try {
         const items = await TrackedItem.find({ guildId: interaction.guildId });
         if (!items || items.length === 0) {
-            return await interaction.editReply('No anime is currently being tracked in this server. Use `/track <title>` to start tracking!');
+            return await interaction.editReply({
+                content: 'No anime or manga is currently being tracked in this server. Use `/track <title>` to start tracking!',
+                components: [buildResetButton('tracked')]
+            });
         }
 
         // Format list with length safety
-        let list = items.map((item, index) => `${index + 1}. **${item.animeTitle}** (Channel: <#${item.channelId}>)`).join('\n');
+        let list = items.map((item, index) => `${index + 1}. **${item.animeTitle}** (${item.mediaType === 'manga' ? 'Manga' : 'Anime'}) (Channel: <#${item.channelId}>)`).join('\n');
         
         if (list.length > 3900) {
             list = list.substring(0, 3900) + '\n\n*...and more (list truncated due to size limits).*';
         }
 
         const embed = new EmbedBuilder()
-            .setTitle('📌 Tracked Anime List')
+            .setTitle('📌 Tracked Anime & Manga')
             .setDescription(list)
             .setColor('#f1c40f')
-            .addFields({ name: '📊 Total Tracked', value: `${items.length} anime`, inline: true })
+            .addFields({ name: '📊 Total Tracked', value: `${items.length} item(s)`, inline: true })
             .setFooter({ text: 'AniTracker • Automated Server Alerts' });
 
-        await interaction.editReply({ embeds: [embed] });
+        await interaction.editReply({
+            embeds: [embed],
+            components: [
+                buildSavedMediaMenu('mytracked_select', items, 'Choose a tracked anime or manga'),
+                buildResetButton('tracked')
+            ]
+        });
     } catch (err) {
         console.error('MyTracked Command Error:', err);
         await interaction.editReply('Failed to fetch tracked list.');
@@ -3086,6 +3453,26 @@ async function runUpdateChecks() {
         
         for (const item of tracked) {
             try {
+                if (item.mediaType === 'manga' || item.source === 'mangadex') {
+                    const currentChapter = await fetchMangaDexLatestChapter(item.animeId);
+                    if (currentChapter > (item.lastEpisodes || 0)) {
+                        const serverSettings = await ServerSettings.findOne({ guildId: item.guildId }).lean();
+                        if (serverSettings?.serverAlertsEnabled !== false) {
+                            const channel = await client.channels.fetch(item.channelId).catch(() => null);
+                            if (channel) {
+                                const embed = new EmbedBuilder()
+                                    .setTitle('🚨 New Manga Chapter Alert!')
+                                    .setDescription(`**[${item.animeTitle}](https://mangadex.org/title/${item.animeId})** has a new chapter!\n\n📖 **Latest Chapter:** ${currentChapter}`)
+                                    .setColor('#e74c3c')
+                                    .setTimestamp();
+                                await channel.send({ embeds: [embed] }).catch(err => console.error(`Failed to send manga alert:`, err.message));
+                            }
+                        }
+                        item.lastEpisodes = currentChapter;
+                        await item.save();
+                    }
+                    continue;
+                }
                 const isKitsu = item.source === 'kitsu' || String(item.animeId).startsWith('kitsu_');
                 const animeId = Number(item.animeId);
                 if (!isKitsu && !Number.isInteger(animeId)) {
@@ -3164,6 +3551,26 @@ async function runUpdateChecks() {
 
         for (const item of favorites) {
             try {
+                if (item.mediaType === 'manga' || item.source === 'mangadex') {
+                    const currentChapter = await fetchMangaDexLatestChapter(item.animeId);
+                    if (currentChapter > (item.lastEpisodes || 0)) {
+                        const userSettings = await UserSettings.findOne({ userId: item.userId }).lean();
+                        const user = userSettings?.favoriteDmsEnabled === false
+                            ? null
+                            : await client.users.fetch(item.userId).catch(() => null);
+                        if (user) {
+                            const embed = new EmbedBuilder()
+                                .setTitle('⭐ Favorite Manga Update!')
+                                .setDescription(`A new chapter of **[${item.animeTitle}](https://mangadex.org/title/${item.animeId})** is out!\n\n📖 **Latest Chapter:** ${currentChapter}`)
+                                .setColor('#f1c40f')
+                                .setTimestamp();
+                            await user.send({ embeds: [embed] }).catch(() => {});
+                        }
+                        item.lastEpisodes = currentChapter;
+                        await item.save();
+                    }
+                    continue;
+                }
                 let anime;
                 if (item.source === 'kitsu' || String(item.animeId).startsWith('kitsu_')) {
                     anime = await fetchKitsuAnime(String(item.animeId).replace(/^kitsu_/, ''));
