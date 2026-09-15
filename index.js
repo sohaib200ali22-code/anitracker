@@ -2488,39 +2488,12 @@ else if (commandName === 'myfavorites') {
 
         if (!favorites || favorites.length === 0) {
             return await interaction.editReply({
-                content: '⭐ You currently have no saved anime or manga favorites.\nUse `/favorite <title>` to add an anime or manga!',
-                components: [buildResetButton('favorites')]
+                content: '⭐ You currently have no saved anime or manga favorites.\nUse `/favorite <title>` to add an anime or manga!'
             });
         }
 
-        // 2️⃣ بناء القائمة والقطع الذكي لمنع كسر التنسيق
-        let descriptionLines = [];
-        for (let index = 0; index < favorites.length; index++) {
-            const mediaLabel = favorites[index].mediaType === 'manga' ? 'Manga' : 'Anime';
-            const line = `${index + 1}. **${favorites[index].animeTitle}** (${mediaLabel})`;
-            
-            // التحقق من الحجم الكلي لمنع تجاوز 3800 حرف
-            const currentTotalLength = descriptionLines.join('\n').length;
-            if (currentTotalLength + line.length > 3800) {
-                descriptionLines.push(`\n*...and ${favorites.length - index} more anime (truncated due to limit).*`);
-                break;
-            }
-            descriptionLines.push(line);
-        }
-
-        const embed = new EmbedBuilder()
-            .setTitle('⭐ Your Saved Anime & Manga')
-            .setDescription(descriptionLines.join('\n'))
-            .setColor('#f39c12')
-            .addFields(
-                { name: '📊 Total Favorites', value: `${favorites.length} item(s)`, inline: true },
-                { name: '💡 Tip', value: 'Use `/unfavorite <title>` to remove any anime from your list.', inline: true }
-            )
-            .setFooter({ text: 'AniTracker • Direct Message notifications enabled for these!' })
-            .setTimestamp();
-
         await interaction.editReply({
-            embeds: [embed],
+            content: '⭐ Choose a saved anime or manga to view its details:',
             components: [
                 buildSavedMediaMenu('myfavorites_select', favorites, 'Choose a saved anime or manga'),
                 buildResetButton('favorites')
@@ -2910,7 +2883,7 @@ else if (commandName === 'manga') {
             .setTitle(manga.title)
             .setURL(manga.siteUrl)
             .setThumbnail(manga.image)
-            .setDescription(cleanMediaDescription(manga.description, 320))
+            .setDescription(`${cleanMediaDescription(manga.description, 320)}\n\nClick **More Info** for more details.`)
             .addFields(
                 { name: 'Chapters', value: `${manga.chapters || 'N/A'}`, inline: true },
                 { name: 'Volumes', value: `${manga.volumes || 'N/A'}`, inline: true },
@@ -3314,26 +3287,11 @@ else if (commandName === 'mytracked') {
         if (!items || items.length === 0) {
             return await interaction.editReply({
                 content: 'No anime or manga is currently being tracked in this server. Use `/track <title>` to start tracking!',
-                components: [buildResetButton('tracked')]
             });
         }
 
-        // Format list with length safety
-        let list = items.map((item, index) => `${index + 1}. **${item.animeTitle}** (${item.mediaType === 'manga' ? 'Manga' : 'Anime'}) (Channel: <#${item.channelId}>)`).join('\n');
-        
-        if (list.length > 3900) {
-            list = list.substring(0, 3900) + '\n\n*...and more (list truncated due to size limits).*';
-        }
-
-        const embed = new EmbedBuilder()
-            .setTitle('📌 Tracked Anime & Manga')
-            .setDescription(list)
-            .setColor('#f1c40f')
-            .addFields({ name: '📊 Total Tracked', value: `${items.length} item(s)`, inline: true })
-            .setFooter({ text: 'AniTracker • Automated Server Alerts' });
-
         await interaction.editReply({
-            embeds: [embed],
+            content: '📌 Choose a tracked anime or manga to view its details:',
             components: [
                 buildSavedMediaMenu('mytracked_select', items, 'Choose a tracked anime or manga'),
                 buildResetButton('tracked')
