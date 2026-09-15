@@ -2562,7 +2562,7 @@ else if (commandName === 'myfavorites') {
         await interaction.editReply({
            content: '⭐ Choose a saved anime or manga to view its details:',
             components: buildSavedMediaComponents(
-               'myfavorites_type_select',
+              'myfavorites_type_select',
                 favorites,
                 'Choose a saved anime or manga',
                 'favorites'
@@ -3362,7 +3362,7 @@ else if (commandName === 'mytracked') {
         await interaction.editReply({
            content: '📌 Choose a tracked anime or manga to view its details:',
             components: buildSavedMediaComponents(
-               'mytracked_type_select',
+              'mytracked_type_select',
                 items,
                 'Choose a tracked anime or manga',
                 'tracked'
