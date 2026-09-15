@@ -2487,13 +2487,13 @@ else if (commandName === 'myfavorites') {
             .lean();
 
         if (!favorites || favorites.length === 0) {
-            return await interaction.editReply({
-                content: '⭐ You currently have no saved anime or manga favorites.\nUse `/favorite <title>` to add an anime or manga!'
-            });
+           return await interaction.editReply({
+               content: '⭐ You currently have no saved anime or manga favorites.\nUse `/favorite <title>` to add an anime or manga!'
+           });
         }
 
         await interaction.editReply({
-            content: '⭐ Choose a saved anime or manga to view its details:',
+           content: '⭐ Choose a saved anime or manga to view its details:',
             components: [
                 buildSavedMediaMenu('myfavorites_select', favorites, 'Choose a saved anime or manga'),
                 buildResetButton('favorites')
@@ -3285,13 +3285,13 @@ else if (commandName === 'mytracked') {
     try {
         const items = await TrackedItem.find({ guildId: interaction.guildId });
         if (!items || items.length === 0) {
-            return await interaction.editReply({
-                content: 'No anime or manga is currently being tracked in this server. Use `/track <title>` to start tracking!',
-            });
+           return await interaction.editReply({
+               content: 'No anime or manga is currently being tracked in this server. Use `/track <title>` to start tracking!'
+           });
         }
 
         await interaction.editReply({
-            content: '📌 Choose a tracked anime or manga to view its details:',
+           content: '📌 Choose a tracked anime or manga to view its details:',
             components: [
                 buildSavedMediaMenu('mytracked_select', items, 'Choose a tracked anime or manga'),
                 buildResetButton('tracked')
