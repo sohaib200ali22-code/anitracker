@@ -273,8 +273,25 @@ function buildSavedMediaMenu(customId, items, placeholder) {
     return new ActionRowBuilder().addComponents(menu);
 }
 
+function buildSavedMediaTypeMenu(customId, items, placeholder) {
+    const mediaTypes = [...new Set(items.map(item => item.mediaType || 'anime'))];
+    const menu = new StringSelectMenuBuilder()
+        .setCustomId(customId)
+        .setPlaceholder(placeholder)
+        .setMinValues(1)
+        .setMaxValues(1)
+        .addOptions(mediaTypes.map(mediaType => ({
+            label: mediaType === 'manga' ? 'Saved Manga' : 'Saved Anime',
+            value: mediaType,
+            description: mediaType === 'manga'
+                ? 'View your saved manga'
+                : 'View your saved anime'
+        })));
+    return new ActionRowBuilder().addComponents(menu);
+}
+
 function buildSavedMediaComponents(customId, items, placeholder, resetKind) {
-    const components = [buildSavedMediaMenu(customId, items, placeholder)];
+    const components = [buildSavedMediaTypeMenu(customId, items, placeholder)];
     if (items.length > 0) {
         components.push(buildResetButton(resetKind));
     }
@@ -811,7 +828,27 @@ client.on('interactionCreate', async interaction => {
    updateChecker = runUpdateChecks;
    // 🎲 Genre recommendation menus & 🔘 Handle Interactive Buttons
 if (interaction.isStringSelectMenu()) {
-    if (interaction.customId === 'myfavorites_select') {
+   if (interaction.customId === 'myfavorites_type_select') {
+       const favorites = await FavoriteItem.find({
+           userId: interaction.user.id,
+           mediaType: interaction.values[0]
+       }).lean();
+       if (!favorites.length) {
+           return interaction.update({
+               content: '❌ There are no saved items of that type.',
+               components: []
+           });
+       }
+       return interaction.update({
+           content: `⭐ Choose a saved ${interaction.values[0] === 'manga' ? 'manga' : 'anime'} to view its details:`,
+           components: [
+               buildSavedMediaMenu('myfavorites_select', favorites, 'Choose a saved item'),
+               buildResetButton('favorites')
+           ]
+       });
+   }
+
+   if (interaction.customId === 'myfavorites_select') {
         const favorite = await FavoriteItem.findOne({
             _id: interaction.values[0],
             userId: interaction.user.id
@@ -836,6 +873,26 @@ if (interaction.isStringSelectMenu()) {
         return interaction.update({
             content: `🎯 **${trackedItem.animeTitle}**\nType: **${trackedItem.mediaType === 'manga' ? 'Manga' : 'Anime'}**\nAlerts: <#${trackedItem.channelId}>`,
             components: []
+        });
+    }
+
+    if (interaction.customId === 'mytracked_type_select') {
+        const items = await TrackedItem.find({
+            guildId: interaction.guildId,
+            mediaType: interaction.values[0]
+        }).lean();
+        if (!items.length) {
+            return interaction.update({
+                content: '❌ There are no tracked items of that type.',
+                components: []
+            });
+        }
+        return interaction.update({
+            content: `📌 Choose a tracked ${interaction.values[0] === 'manga' ? 'manga' : 'anime'} to view its details:`,
+            components: [
+                buildSavedMediaMenu('mytracked_select', items, 'Choose a tracked item'),
+                buildResetButton('tracked')
+            ]
         });
     }
 
@@ -2505,7 +2562,7 @@ else if (commandName === 'myfavorites') {
         await interaction.editReply({
            content: '⭐ Choose a saved anime or manga to view its details:',
             components: buildSavedMediaComponents(
-                'myfavorites_select',
+               'myfavorites_type_select',
                 favorites,
                 'Choose a saved anime or manga',
                 'favorites'
@@ -3305,7 +3362,7 @@ else if (commandName === 'mytracked') {
         await interaction.editReply({
            content: '📌 Choose a tracked anime or manga to view its details:',
             components: buildSavedMediaComponents(
-                'mytracked_select',
+               'mytracked_type_select',
                 items,
                 'Choose a tracked anime or manga',
                 'tracked'
