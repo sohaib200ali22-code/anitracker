@@ -26,6 +26,8 @@ const TrackSchema = new mongoose.Schema({
     lastStatus: String,
     source: { type: String, default: 'anilist' }
 });
+TrackSchema.index({ guildId: 1, animeId: 1 });
+TrackSchema.index({ guildId: 1, mediaType: 1 });
 const TrackedItem = mongoose.model('TrackedItem', TrackSchema);
 
 // MongoDB Schema for Personal Favorites (DM Alerts)
@@ -37,7 +39,18 @@ const FavoriteSchema = new mongoose.Schema({
     lastEpisodes: Number,
     source: { type: String, default: 'anilist' }
 });
+FavoriteSchema.index({ userId: 1, animeId: 1 });
+FavoriteSchema.index({ userId: 1, mediaType: 1 });
 const FavoriteItem = mongoose.model('FavoriteItem', FavoriteSchema);
+
+const ReportSchema = new mongoose.Schema({
+    userId: String,
+    messageHash: String,
+    message: String,
+    createdAt: { type: Date, default: Date.now }
+});
+ReportSchema.index({ userId: 1, messageHash: 1, createdAt: -1 });
+const Report = mongoose.model('Report', ReportSchema);
 
 async function findExistingFavorite(userId, animeId, animeTitle) {
     return FavoriteItem.findOne({
@@ -124,6 +137,30 @@ const AgeVerificationSchema = new mongoose.Schema({
     verifiedBy: String
 });
 const AgeVerification = mongoose.model('AgeVerification', AgeVerificationSchema);
+
+let maintenanceMode = process.env.MAINTENANCE_MODE === 'true';
+const commandCooldowns = new Map();
+const COMMAND_COOLDOWNS = {
+    anime: 5000, manga: 5000, genre: 8000, report: 60000, apicheck: 30000, random: 8000
+};
+function isOwner(interaction) {
+    return interaction?.user?.id === BOT_OWNER_ID || interaction?.user?.id === (process.env.DEV_USER_ID || '1326815636395003966');
+}
+function checkCooldown(interaction, commandName) {
+    const duration = COMMAND_COOLDOWNS[commandName];
+    if (!duration || isOwner(interaction)) return 0;
+    const key = `${commandName}:${interaction.user.id}`;
+    const remaining = (commandCooldowns.get(key) || 0) - Date.now();
+    if (remaining > 0) return remaining;
+    commandCooldowns.set(key, Date.now() + duration);
+    return 0;
+}
+function formatCooldown(ms) {
+    return `${Math.ceil(ms / 1000)} second${Math.ceil(ms / 1000) === 1 ? '' : 's'}`;
+}
+function logApiFailure(source, error, context = '') {
+    console.error(`[API failure] ${source}${context ? ` (${context})` : ''}:`, error?.message || error);
+}
 
 // 1. تعريف مصفوفة التصنيفات
 const GENRE_OPTIONS = [
@@ -320,6 +357,42 @@ function buildResetConfirmation(kind) {
     );
 }
 
+function buildRemoveSavedTypeMenu() {
+    return new ActionRowBuilder().addComponents(
+        new StringSelectMenuBuilder()
+            .setCustomId('remove_saved_type_select')
+            .setPlaceholder('Choose what to remove')
+            .setMinValues(1)
+            .setMaxValues(1)
+            .addOptions(
+                {
+                    label: 'Saved Anime',
+                    value: 'anime',
+                    description: 'Remove all saved anime DM alerts'
+                },
+                {
+                    label: 'Saved Manga',
+                    value: 'manga',
+                    description: 'Remove all saved manga DM alerts'
+                }
+            )
+    );
+}
+
+function buildRemoveSavedConfirmation(mediaType, step) {
+    const label = mediaType === 'manga' ? 'manga' : 'anime';
+    return new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+            .setCustomId(`remove_saved_confirm_${step}_${mediaType}`)
+            .setLabel(step === 1 ? `Yes, remove saved ${label}` : 'Confirm permanent removal')
+            .setStyle(ButtonStyle.Danger),
+        new ButtonBuilder()
+            .setCustomId(`remove_saved_cancel_${mediaType}`)
+            .setLabel('Cancel')
+            .setStyle(ButtonStyle.Secondary)
+    );
+}
+
 // FIX: removed GatewayIntentBits.GuildPresences — it's a privileged intent that
 // requires manual approval/toggling in the Discord Developer Portal, and nothing
 // in this bot actually listens to presence events. Guilds is enough for slash commands.
@@ -364,7 +437,7 @@ async function fetchAniList(query, variables) {
             return null;
         } catch (error) {
             if (attempt === 3) {
-                console.error('Proxy Fetch Error:', error.response ? error.response.status : error.message);
+                logApiFailure('AniList proxy', error, error.response ? `HTTP ${error.response.status}` : '');
                 return null;
             }
             await sleep(attempt * 350);
@@ -379,6 +452,11 @@ function cleanMediaDescription(description, maxLength = 180) {
         .replace(/!~/g, '')
         .trim();
     return clean.length > maxLength ? `${clean.substring(0, maxLength).trim()}...` : clean;
+}
+
+function limitEmbedField(value, maxLength = 1024) {
+    const text = String(value || 'N/A').trim();
+    return text.length > maxLength ? `${text.substring(0, maxLength - 3).trim()}...` : text;
 }
 
 function buildMediaButtons(media, interaction, mediaType = 'anime', alreadyViewed = false) {
@@ -423,7 +501,9 @@ function buildMediaButtons(media, interaction, mediaType = 'anime', alreadyViewe
 }
 
 async function fetchKitsuAnime(id) {
-    const response = await fetch(`https://kitsu.io/api/edge/anime/${encodeURIComponent(id)}`);
+    const response = await fetch(`https://kitsu.io/api/edge/anime/${encodeURIComponent(id)}`, {
+        headers: { Accept: 'application/vnd.api+json' }
+    });
     if (!response.ok) {
         return null;
     }
@@ -436,7 +516,9 @@ async function fetchKitsuAnime(id) {
 
     return {
         title: anime.attributes.canonicalTitle || anime.attributes.titles?.en,
+        totalEpisodes: anime.attributes.episodeCount || 0,
         episodes: anime.attributes.episodeCount || 0,
+        airedEpisodes: anime.attributes.status === 'finished' ? (anime.attributes.episodeCount || 0) : null,
         status: anime.attributes.status?.toUpperCase() || 'UNKNOWN',
         image: anime.attributes.posterImage?.large,
         siteUrl: `https://kitsu.io/anime/${anime.id}`
@@ -445,10 +527,16 @@ async function fetchKitsuAnime(id) {
 
 // Helper لمعرفة عدد الحلقات المعروضة بالفعل
 function getAiredEpisodes(anime) {
-    if (anime.status === 'RELEASING' && anime.nextAiringEpisode?.episode) {
-        return anime.nextAiringEpisode.episode - 1;
+    if (anime.nextAiringEpisode?.episode) {
+        return Math.max(0, anime.nextAiringEpisode.episode - 1);
     }
-    return anime.episodes || 0;
+    return ['FINISHED', 'CANCELLED'].includes(String(anime.status).toUpperCase())
+        ? (anime.episodes || 0)
+        : (anime.airedEpisodes || 0);
+}
+
+function getCurrentAiredEpisodes(anime, source = 'anilist') {
+    return source === 'kitsu' ? (anime.airedEpisodes ?? 0) : getAiredEpisodes(anime);
 }
 
 function isValidTimezone(timezone) {
@@ -521,7 +609,9 @@ async function getServerAlertChannelId(guildId, fallbackChannelId) {
 module.exports = {
     fetchAniList,
     sleep,
-    getAiredEpisodes
+    getAiredEpisodes,
+    getCurrentAiredEpisodes,
+    checkCooldown
 };
 // Register Slash Commands
 const allCommands = [
@@ -542,26 +632,32 @@ const allCommands = [
                 .addChoices({ name: 'Anime', value: 'anime' }, { name: 'Manga', value: 'manga' })
                 .setRequired(false)),
     new SlashCommandBuilder()
-        .setName('fav')
-        .setDescription('Add an anime to your personal favorites (Receive DM notifications)')
-        .addStringOption(option =>
-            option.setName('title')
-                .setDescription('Anime title to add to favorites')
-                .setAutocomplete(true)
-                .setRequired(true)),
-    new SlashCommandBuilder()
         .setName('unfavorite')
         .setDescription('Remove an anime from your personal favorites')
         .addStringOption(option =>
             option.setName('title')
                 .setDescription('Anime title to remove from favorites')
+                .setAutocomplete(true)
                 .setRequired(true)),
     new SlashCommandBuilder()
+        .setName('remove-saved')
+        .setDescription('Remove all saved anime or manga DM alerts'),
+    new SlashCommandBuilder()
         .setName('myfavorites')
-        .setDescription('List all your personal favorite anime'),
+        .setDescription('List all your personal favorite anime')
+        .addIntegerOption(option => option.setName('page').setDescription('Page number').setMinValue(1)),
     new SlashCommandBuilder()
         .setName('help')
         .setDescription('Displays a list of available commands and bot usage guide'),
+    new SlashCommandBuilder()
+        .setName('report')
+        .setDescription('Privately report a problem to the bot owner')
+        .addStringOption(option =>
+            option.setName('message')
+                .setDescription('Describe the problem and how to reproduce it')
+                .setMinLength(5)
+                .setMaxLength(1500)
+                .setRequired(true)),
     new SlashCommandBuilder()
         .setName('anime')
         .setDescription('Search for an anime')
@@ -570,6 +666,12 @@ const allCommands = [
                 .setDescription('Anime title')
                 .setAutocomplete(true)
                 .setRequired(true)),
+    new SlashCommandBuilder()
+        .setName('random')
+        .setDescription('Get a random anime or manga recommendation')
+        .addStringOption(option => option.setName('media').setDescription('Anime or manga').addChoices(
+            { name: 'Anime', value: 'anime' }, { name: 'Manga', value: 'manga' }
+        )),
     new SlashCommandBuilder()
         .setName('manga')
         .setDescription('Search for a manga')
@@ -623,7 +725,8 @@ const allCommands = [
                 .setRequired(false)),
     new SlashCommandBuilder()
     .setName('schedule')
-    .setDescription('📅 Displays today\'s anime release schedule!'),
+    .setDescription('📅 Displays anime release schedule for a date')
+    .addStringOption(option => option.setName('date').setDescription('Date in YYYY-MM-DD (defaults to today)')),
     new SlashCommandBuilder()
         .setName('setup')
         .setDescription('Set up AniTracker permissions and the server alert channel'),
@@ -639,10 +742,12 @@ const allCommands = [
         .addStringOption(option =>
             option.setName('title')
                 .setDescription('Anime title to untrack')
+                .setAutocomplete(true)
                 .setRequired(true)),
     new SlashCommandBuilder()
         .setName('mytracked')
-        .setDescription('List all tracked anime in this server'),
+        .setDescription('List all tracked anime in this server')
+        .addIntegerOption(option => option.setName('page').setDescription('Page number').setMinValue(1)),
     // NEW: dev-only command to manually trigger the 30-min episode check on demand,
     // so new-episode alerts can be tested without waiting for the real interval.
     // FIX: hidden from regular members by default — only users with Administrator
@@ -712,6 +817,13 @@ const allCommands = [
             option.setName('user')
                 .setDescription('User who completed age verification in DMs')
                 .setRequired(true))
+    ,
+    new SlashCommandBuilder()
+        .setName('apicheck')
+        .setDescription('Check whether AniList and Kitsu are working'),
+    new SlashCommandBuilder()
+        .setName('database-stats')
+        .setDescription('(Owner only) Show MongoDB collection statistics')
 ].map(command => command.toJSON());
 
 const OWNER_COMMAND_NAMES = new Set([
@@ -722,7 +834,9 @@ const OWNER_COMMAND_NAMES = new Set([
     'bot-status',
     'getinvite',
     'testalert',
-    'health'
+    'health',
+    'apicheck',
+    'database-stats'
 ]);
 const SERVER_ONLY_OWNER_COMMAND_NAMES = new Set(['verify', 'unverify']);
 const commands = allCommands.filter(command =>
@@ -734,13 +848,6 @@ const ownerCommands = allCommands.filter(command =>
     ...command,
     default_member_permissions: PermissionFlagsBits.Administrator.toString()
 }));
-const globalOwnerCommands = allCommands
-    .filter(command => OWNER_COMMAND_NAMES.has(command.name))
-    .map(command => ({
-        ...command,
-        default_member_permissions: PermissionFlagsBits.Administrator.toString()
-    }));
-
 const BOT_OWNER_ID = process.env.DEV_USER_ID || '1326815636395003966';
 
 async function sendDevAlert(interaction, message) {
@@ -775,7 +882,7 @@ client.once('clientReady', async () => {
         console.log('Started refreshing application (/) commands.');
         await rest.put(
             Routes.applicationCommands(client.user.id),
-            { body: [...commands, ...globalOwnerCommands] }
+            { body: commands }
         );
         console.log('Successfully reloaded application (/) commands!');
 
@@ -806,9 +913,13 @@ client.on('guildCreate', async guild => {
         .setColor('#2ecc71')
         .setFooter({ text: 'AniTracker • Ready to explore' });
     const supportButton = new ButtonBuilder()
-        .setLabel('💬 Support Server')
+        .setLabel('💬 Help Server')
         .setStyle(ButtonStyle.Link)
         .setURL('https://discord.gg/H4Af2y4RD8');
+    const addBotButton = new ButtonBuilder()
+        .setLabel('➕ Add AniTracker')
+        .setStyle(ButtonStyle.Link)
+        .setURL(`https://discord.com/oauth2/authorize?client_id=${guild.client.user.id}&scope=bot%20applications.commands&permissions=0`);
     const channel = guild.systemChannel
         || guild.channels.cache.find(candidate =>
             candidate.isTextBased() && candidate.permissionsFor(guild.members.me)?.has(PermissionFlagsBits.SendMessages)
@@ -817,17 +928,37 @@ client.on('guildCreate', async guild => {
     try {
         await channel.send({
             embeds: [welcome],
-            components: [new ActionRowBuilder().addComponents(supportButton)]
+            components: [new ActionRowBuilder().addComponents(supportButton, addBotButton)]
         });
     } catch (err) {
         console.error(`Could not send welcome message in guild ${guild.id}:`, err.message);
     }
 });
 
-client.on('interactionCreate', async interaction => {
+client.on('interactionCreate', interaction => {
+    Promise.resolve().then(async () => {
    updateChecker = runUpdateChecks;
    // 🎲 Genre recommendation menus & 🔘 Handle Interactive Buttons
 if (interaction.isStringSelectMenu()) {
+   if (interaction.customId === 'remove_saved_type_select') {
+       const mediaType = interaction.values[0];
+       const label = mediaType === 'manga' ? 'manga' : 'anime';
+       const count = await FavoriteItem.countDocuments({
+           userId: interaction.user.id,
+           mediaType
+       });
+       if (!count) {
+           return interaction.update({
+               content: `❌ You have no saved ${label} DM alerts to remove.`,
+               components: []
+           });
+       }
+       return interaction.update({
+           content: `⚠️ This will remove all **${count}** saved ${label} DM alerts. Tracked server items will not be changed.\n\nAre you sure you want to continue?`,
+           components: [buildRemoveSavedConfirmation(mediaType, 1)]
+       });
+   }
+
    if (interaction.customId === 'myfavorites_type_select') {
        const favorites = await FavoriteItem.find({
            userId: interaction.user.id,
@@ -985,12 +1116,6 @@ if (interaction.isStringSelectMenu()) {
                 });
             }
 
-            if (interaction.guildId) {
-                return interaction.update({
-                    content: '🔞 18+ recommendations are available in DMs only. Please run `/genre` in a DM after your age has been verified.',
-                    components: []
-                });
-            }
         }
 
         await interaction.deferUpdate();
@@ -1202,6 +1327,39 @@ if (interaction.isModalSubmit() && interaction.customId === 'settings_timezone_m
 }
 
 if (interaction.isButton()) {
+    if (interaction.customId.startsWith('remove_saved_cancel_')) {
+        return interaction.update({
+            content: '✅ Removal cancelled. Your saved DM alerts and tracked items were not changed.',
+            components: []
+        });
+    }
+
+    if (interaction.customId.startsWith('remove_saved_confirm_1_')) {
+        const mediaType = interaction.customId.replace('remove_saved_confirm_1_', '');
+        if (!['anime', 'manga'].includes(mediaType)) {
+            return interaction.update({ content: '❌ This removal request is no longer valid.', components: [] });
+        }
+        return interaction.update({
+            content: `🛑 Final confirmation: permanently remove all saved ${mediaType} DM alerts?\nYour tracked server items will remain untouched.`,
+            components: [buildRemoveSavedConfirmation(mediaType, 2)]
+        });
+    }
+
+    if (interaction.customId.startsWith('remove_saved_confirm_2_')) {
+        const mediaType = interaction.customId.replace('remove_saved_confirm_2_', '');
+        if (!['anime', 'manga'].includes(mediaType)) {
+            return interaction.update({ content: '❌ This removal request is no longer valid.', components: [] });
+        }
+        const result = await FavoriteItem.deleteMany({
+            userId: interaction.user.id,
+            mediaType
+        });
+        return interaction.update({
+            content: `🗑️ Removed **${result.deletedCount}** saved ${mediaType} DM alert(s). Tracked server items were not changed.`,
+            components: []
+        });
+    }
+
     if (interaction.customId === 'reset_favorites') {
         return interaction.update({
             content: '⚠️ Are you sure? This permanently deletes **all your saved anime and manga favorites** from MongoDB.',
@@ -1316,9 +1474,6 @@ if (interaction.isButton()) {
 
     if (interaction.customId.startsWith('more_info_')) {
         await interaction.deferReply({ ephemeral: true });
-        await interaction.message.delete().catch(err => {
-            console.warn('Could not delete media result message:', err.message);
-        });
         const [, , mediaId, mediaType] = interaction.customId.split('_');
         if (!['anime', 'manga'].includes(mediaType) || !Number.isInteger(Number(mediaId))) {
             if (mediaType === 'manga' && /^[0-9a-f-]{36}$/i.test(mediaId)) {
@@ -1329,7 +1484,7 @@ if (interaction.isButton()) {
                     });
                     const item = response.data?.data;
                     const title = item?.attributes?.title?.en || Object.values(item?.attributes?.title || {})[0];
-                    if (!item || !title) return interaction.editReply({ content: '❌ Manga information is currently unavailable.', ephemeral: true });
+                    if (!item || !title) return interaction.editReply({ content: '❌ Failed to load more information. Please try again later.', ephemeral: true });
                     const attributes = item.attributes || {};
                     const description = attributes.description?.en || Object.values(attributes.description || {})[0] || 'No synopsis available.';
                     const authors = item.relationships
@@ -1392,10 +1547,10 @@ if (interaction.isButton()) {
                     return interaction.editReply({ embeds: [details], components: [] });
                 } catch (err) {
                     console.error('MangaDex info button error:', err.message);
-                    return interaction.editReply({ content: '❌ Failed to load manga information.', ephemeral: true });
+                    return interaction.editReply({ content: '❌ Failed to load more information. Please try again later.', ephemeral: true });
                 }
             }
-            return interaction.editReply({ content: '❌ This media action is no longer valid. Please run the search again.', ephemeral: true });
+            return interaction.editReply({ content: '❌ Failed to load more information. Please try again later.', ephemeral: true });
         }
         const gqlQuery = `
         query ($id: Int, $type: MediaType) {
@@ -1440,7 +1595,7 @@ if (interaction.isButton()) {
             });
             const media = data?.Media;
             if (!media) {
-                return interaction.editReply({ content: '❌ More information is currently unavailable.', ephemeral: true });
+                return interaction.editReply({ content: '❌ Failed to load more information. Please try again later.', ephemeral: true });
             }
 
             const title = media.title?.english || media.title?.romaji || 'Unknown title';
@@ -1457,33 +1612,32 @@ if (interaction.isButton()) {
                 .setTitle(`📖 ${title}`)
                 .setURL(media.siteUrl || 'https://anilist.co')
                 .setThumbnail(media.coverImage?.large || 'https://i.imgur.com/AGv4yDI.png')
-                .setDescription(cleanMediaDescription(media.description, 3800))
+                .setDescription(cleanMediaDescription(media.description, 3000))
                 .addFields(
-                    { name: 'Type', value: media.format || mediaType.toUpperCase(), inline: true },
-                    { name: 'Status', value: media.status || 'N/A', inline: true },
-                    { name: 'Score', value: media.averageScore ? `${media.averageScore} / 100` : 'N/A', inline: true },
-                    { name: mediaType === 'manga' ? 'Chapters' : 'Episodes', value: `${mediaType === 'manga' ? (media.chapters ?? 'N/A') : (media.episodes ?? 'N/A')}`, inline: true },
-                    { name: 'Season', value: seasonText, inline: true },
-                    { name: 'Genres', value: media.genres?.slice(0, 8).join(', ') || 'N/A', inline: false },
-                    { name: 'Main Characters', value: characterList, inline: false },
-                    { name: 'Related / Seasons', value: relatedList, inline: false },
-                    { name: 'Studios', value: media.studios?.nodes?.map(studio => studio.name).slice(0, 5).join(', ') || 'N/A', inline: false }
+                    { name: 'Type', value: limitEmbedField(media.format || mediaType.toUpperCase()), inline: true },
+                    { name: 'Status', value: limitEmbedField(media.status), inline: true },
+                    { name: 'Score', value: limitEmbedField(media.averageScore ? `${media.averageScore} / 100` : 'N/A'), inline: true },
+                    { name: mediaType === 'manga' ? 'Chapters' : 'Episodes', value: limitEmbedField(`${mediaType === 'manga' ? (media.chapters ?? 'N/A') : (media.episodes ?? 'N/A')}`), inline: true },
+                    { name: 'Season', value: limitEmbedField(seasonText), inline: true },
+                    { name: 'Genres', value: limitEmbedField(media.genres?.slice(0, 8).join(', ')), inline: false },
+                    { name: 'Main Characters', value: limitEmbedField(characterList), inline: false },
+                    { name: 'Related / Seasons', value: limitEmbedField(relatedList), inline: false },
+                    { name: 'Studios', value: limitEmbedField(media.studios?.nodes?.map(studio => studio.name).slice(0, 5).join(', ')), inline: false }
                 )
                 .setColor('#3498db')
                 .setFooter({ text: 'AniTracker • More Info' });
-
-            if (interaction.message) {
-                const disabledButtons = buildMediaButtons(media, interaction, mediaType, true);
-                await interaction.message.edit({ components: disabledButtons });
-            }
 
             return interaction.editReply({
                 embeds: [details],
                 components: buildMediaButtons(media, interaction, mediaType, true)
             });
         } catch (err) {
-            console.error('Media info button error:', err);
-            return interaction.editReply({ content: '❌ Failed to load more information. Please try again later.', ephemeral: true });
+            console.error('Media info button error:', err.message, err.stack);
+            return interaction.editReply({
+                content: '❌ Failed to load more information. Please try again later.',
+                embeds: [],
+                components: []
+            });
         }
     }
 
@@ -1605,7 +1759,7 @@ if (interaction.isButton()) {
             channelId: await getServerAlertChannelId(interaction.guildId, interaction.channelId),
             animeId: anime.id,
             animeTitle: animeTitle,
-            lastEpisodes: anime.episodes || 0,
+            lastEpisodes: getAiredEpisodes(anime),
             lastStatus: anime.status || 'UNKNOWN'
         });
 
@@ -1660,7 +1814,7 @@ if (interaction.isButton()) {
             userId: interaction.user.id,
             animeId: String(anime.id),
             animeTitle: animeTitle,
-            lastEpisodes: anime.episodes || 0,
+            lastEpisodes: getAiredEpisodes(anime),
             source: 'anilist'
         });
 
@@ -1763,9 +1917,31 @@ if (interaction.isButton()) {
 
     if (interaction.isAutocomplete()) {
         const focused = String(interaction.options.getFocused() || '').trim();
-        const autocompleteCommands = new Set(['anime', 'manga', 'character', 'track', 'favorite', 'fav']);
+        const autocompleteCommands = new Set(['anime', 'manga', 'character', 'track', 'favorite', 'unfavorite', 'untrack']);
         if (!autocompleteCommands.has(interaction.commandName) || focused.length < 1) {
             return interaction.respond([]);
+        }
+
+        if (interaction.commandName === 'unfavorite' || interaction.commandName === 'untrack') {
+            try {
+                const items = interaction.commandName === 'unfavorite'
+                    ? await FavoriteItem.find({ userId: interaction.user.id }).select('animeTitle mediaType').lean()
+                    : interaction.guildId
+                        ? await TrackedItem.find({ guildId: interaction.guildId }).select('animeTitle mediaType').lean()
+                        : [];
+                const normalizedQuery = focused.toLowerCase();
+                const choices = items
+                    .filter(item => item.animeTitle.toLowerCase().includes(normalizedQuery))
+                    .slice(0, 25)
+                    .map(item => ({
+                        name: `${item.mediaType === 'manga' ? 'Manga' : 'Anime'}: ${item.animeTitle}`.substring(0, 100),
+                        value: item.animeTitle.substring(0, 100)
+                    }));
+                return interaction.respond(choices);
+            } catch (err) {
+                console.error(`${interaction.commandName} database autocomplete error:`, err);
+                return interaction.respond([]);
+            }
         }
 
         if (interaction.commandName === 'character') {
@@ -1840,9 +2016,14 @@ if (interaction.isButton()) {
 
     if (!interaction.isChatInputCommand()) return;
 
-    const commandName = interaction.commandName === 'fav'
-        ? 'favorite'
-        : interaction.commandName;
+    const commandName = interaction.commandName;
+    if (maintenanceMode && !isOwner(interaction) && !['start', 'help', 'health'].includes(commandName)) {
+        return interaction.reply({ content: '🛠️ AniTracker is temporarily in maintenance mode. Please try again soon.', flags: MessageFlags.Ephemeral });
+    }
+    const cooldownRemaining = checkCooldown(interaction, commandName);
+    if (cooldownRemaining) {
+        return interaction.reply({ content: `⏳ Please wait ${formatCooldown(cooldownRemaining)} before using \`/${commandName}\` again.`, flags: MessageFlags.Ephemeral });
+    }
 
     // -------------------------------------------------------------
 // 🚀 Start Command
@@ -1912,6 +2093,166 @@ if (commandName === 'start') {
     }
 }
 
+else if (commandName === 'remove-saved') {
+    return interaction.reply({
+        content: 'Choose whether to remove saved anime or saved manga DM alerts:',
+        components: [buildRemoveSavedTypeMenu()],
+        flags: MessageFlags.Ephemeral
+    });
+}
+
+else if (commandName === 'apicheck') {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    const startedAt = Date.now();
+    let anilistStatus = '❌ Offline';
+    let kitsuStatus = '❌ Offline';
+
+    try {
+        const anilistStart = Date.now();
+        const data = await fetchAniList('query { Media(id: 1, type: ANIME) { id } }', {});
+        anilistStatus = data?.Media?.id
+            ? `✅ Working (${Date.now() - anilistStart}ms)`
+            : '⚠️ No response';
+    } catch (err) {
+        console.error('AniList API check error:', err.message);
+    }
+
+    try {
+        const kitsuStart = Date.now();
+        const response = await fetch('https://kitsu.io/api/edge/anime/1');
+        kitsuStatus = response.ok
+            ? `✅ Working (${Date.now() - kitsuStart}ms)`
+            : `⚠️ HTTP ${response.status}`;
+    } catch (err) {
+        console.error('Kitsu API check error:', err.message);
+    }
+
+    const allWorking = anilistStatus.startsWith('✅') && kitsuStatus.startsWith('✅');
+    return interaction.editReply({
+        embeds: [
+            new EmbedBuilder()
+                .setTitle('🔌 API Check')
+                .setDescription(allWorking ? 'Both anime services are responding.' : 'One or more anime services may be unavailable.')
+                .addFields(
+                    { name: 'AniList', value: anilistStatus, inline: true },
+                    { name: 'Kitsu', value: kitsuStatus, inline: true },
+                    { name: 'Total response time', value: `${Date.now() - startedAt}ms`, inline: true }
+                )
+                .setColor(allWorking ? '#2ecc71' : '#f1c40f')
+                .setTimestamp()
+        ]
+    });
+}
+
+else if (commandName === 'report') {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    const reportMessage = interaction.options.getString('message', true).trim();
+    const crypto = require('crypto');
+    const messageHash = crypto.createHash('sha256').update(reportMessage.toLowerCase().replace(/\s+/g, ' ')).digest('hex');
+    const ownerId = process.env.DEV_USER_ID || '1326815636395003966';
+    const location = interaction.guild
+        ? `${interaction.guild.name} (${interaction.guildId})`
+        : 'Direct message';
+
+    try {
+        const duplicate = await Report.findOne({
+            userId: interaction.user.id,
+            messageHash,
+            createdAt: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) }
+        }).lean();
+        if (duplicate) {
+            return interaction.editReply({ content: 'ℹ️ You already submitted this report recently. Please wait for the owner to review it.' });
+        }
+        const owner = await interaction.client.users.fetch(ownerId);
+        const reportEmbed = new EmbedBuilder()
+            .setTitle('📩 New AniTracker User Report')
+            .setDescription(reportMessage)
+            .addFields(
+                { name: 'Reporter', value: `${interaction.user.tag} (${interaction.user.id})`, inline: false },
+                { name: 'Location', value: location, inline: false },
+                { name: 'Command', value: interaction.commandName, inline: true }
+            )
+            .setColor('#e67e22')
+            .setTimestamp()
+            .setFooter({ text: 'AniTracker • User report' });
+
+        await owner.send({ embeds: [reportEmbed] });
+        await Report.create({ userId: interaction.user.id, messageHash, message: reportMessage });
+        return interaction.editReply({
+            content: '✅ Your report was sent privately to the bot owner. Thank you for helping improve AniTracker.'
+        });
+    } catch (err) {
+        console.error('report command error:', err);
+        return interaction.editReply({
+            content: '❌ I could not send your report right now. Please try again later or contact the owner in the support server.'
+        });
+    }
+}
+
+else if (commandName === 'database-stats') {
+    const DEV_ID = process.env.DEV_USER_ID || '1326815636395003966';
+    if (!isOwner(interaction)) {
+        return interaction.reply({
+            content: '🚫 This command is reserved for the bot owner.',
+            flags: MessageFlags.Ephemeral
+        });
+    }
+
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    try {
+        const [
+            trackedCount,
+            favoriteCount,
+            userSettingsCount,
+            serverSettingsCount,
+            verificationCount,
+            trackedByType,
+            favoritesByType,
+            trackedBySource,
+            favoritesBySource
+        ] = await Promise.all([
+            TrackedItem.countDocuments(),
+            FavoriteItem.countDocuments(),
+            UserSettings.countDocuments(),
+            ServerSettings.countDocuments(),
+            AgeVerification.countDocuments(),
+            TrackedItem.aggregate([{ $group: { _id: '$mediaType', count: { $sum: 1 } } }]),
+            FavoriteItem.aggregate([{ $group: { _id: '$mediaType', count: { $sum: 1 } } }]),
+            TrackedItem.aggregate([{ $group: { _id: '$source', count: { $sum: 1 } } }]),
+            FavoriteItem.aggregate([{ $group: { _id: '$source', count: { $sum: 1 } } }])
+        ]);
+        const dbStates = ['disconnected', 'connected', 'connecting', 'disconnecting'];
+        const dbStatus = dbStates[mongoose.connection.readyState] || 'unknown';
+
+        return interaction.editReply({
+            embeds: [
+                new EmbedBuilder()
+                    .setTitle('🗄️ AniTracker Database Stats')
+                    .setColor(dbStatus === 'connected' ? '#2ecc71' : '#f1c40f')
+                    .addFields(
+                        { name: 'MongoDB status', value: dbStatus, inline: true },
+                        { name: 'Tracked items', value: `${trackedCount}`, inline: true },
+                        { name: 'Saved DM alerts', value: `${favoriteCount}`, inline: true },
+                        { name: 'User settings', value: `${userSettingsCount}`, inline: true },
+                        { name: 'Server settings', value: `${serverSettingsCount}`, inline: true },
+                        { name: 'Age verifications', value: `${verificationCount}`, inline: true },
+                        { name: 'Tracked by media', value: trackedByType.map(item => `${item._id || 'unknown'}: ${item.count}`).join(' • ') || 'None', inline: false },
+                        { name: 'Favorites by media', value: favoritesByType.map(item => `${item._id || 'unknown'}: ${item.count}`).join(' • ') || 'None', inline: false },
+                        { name: 'Tracked by API source', value: trackedBySource.map(item => `${item._id || 'unknown'}: ${item.count}`).join(' • ') || 'None', inline: false },
+                        { name: 'Favorites by API source', value: favoritesBySource.map(item => `${item._id || 'unknown'}: ${item.count}`).join(' • ') || 'None', inline: false }
+                    )
+                    .setTimestamp()
+                    .setFooter({ text: 'AniTracker • Owner diagnostics' })
+            ]
+        });
+    } catch (err) {
+        console.error('database-stats command error:', err);
+        return interaction.editReply({
+            content: '❌ Could not read database statistics. Please check the MongoDB connection and console logs.'
+        });
+    }
+}
+
 // 🔞 Show the current user's manual age-verification status
 else if (commandName === 'verification-status') {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
@@ -1945,7 +2286,7 @@ else if (commandName === 'verify') {
     const DEV_ID = process.env.DEV_USER_ID || '1326815636395003966';
 
     // 1. Owner Check Guard
-    if (interaction.user.id !== DEV_ID) {
+    if (!isOwner(interaction)) {
         return interaction.reply({ 
             content: `🚫 Only the bot owner can approve age verification, owner username: \`_h8rtless_\`.\n\n💬 Join our support server to open a ticket and verify your age:\nhttps://discord.gg/H4Af2y4RD8`, 
             flags: 64 
@@ -2003,7 +2344,7 @@ else if (commandName === 'unverify') {
     const DEV_ID = process.env.DEV_USER_ID || '1326815636395003966';
 
     // 1. Owner Check Guard
-    if (interaction.user.id !== DEV_ID) {
+    if (!isOwner(interaction)) {
         return interaction.reply({ 
             content: '🚫 Only the bot owner can remove age verification.', 
             flags: 64 
@@ -2125,10 +2466,21 @@ else if (commandName === 'schedule') {
     try {
         const userSettings = await UserSettings.findOne({ userId: interaction.user.id }).lean();
         const timezone = userSettings?.timezone || 'UTC';
-        // 1️⃣ حساب بداية ونهاية اليوم بتوقيت UTC
+        const requestedDate = interaction.options.getString('date');
         const now = new Date();
-        const startOfDay = Math.floor(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0) / 1000);
-        const endOfDay = Math.floor(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 23, 59, 59) / 1000);
+        const dateText = requestedDate || now.toISOString().slice(0, 10);
+        const parsedDate = /^\d{4}-\d{2}-\d{2}$/.test(dateText)
+            ? new Date(`${dateText}T00:00:00Z`)
+            : null;
+        const isValidDate = parsedDate
+            && !Number.isNaN(parsedDate.getTime())
+            && parsedDate.toISOString().slice(0, 10) === dateText;
+        if (!isValidDate) {
+            return interaction.editReply('❌ Date must use the format `YYYY-MM-DD`.');
+        }
+        const dayStart = parsedDate;
+        const startOfDay = Math.floor(dayStart.getTime() / 1000);
+        const endOfDay = startOfDay + 86400 - 1;
 
         const gqlQuery = `
         query ($start: Int, $end: Int) {
@@ -2162,7 +2514,7 @@ else if (commandName === 'schedule') {
         if (schedules.length === 0) {
             sourceName = 'MyAnimeList';
             try {
-                const dayName = now.toLocaleDateString('en-US', { weekday: 'lowercase', timeZone: 'UTC' });
+                const dayName = dayStart.toLocaleDateString('en-US', { weekday: 'long', timeZone: 'UTC' }).toLowerCase();
                 const jikanRes = await fetch(`https://api.jikan.moe/v4/schedules?filter=${dayName}`)
                     .then(res => res.json())
                     .catch(() => null);
@@ -2205,7 +2557,7 @@ else if (commandName === 'schedule') {
 
         const embed = new EmbedBuilder()
             .setColor('#ff69b4')
-            .setTitle('📅 Today\'s Anime Schedule')
+            .setTitle(`📅 Anime Schedule — ${dateText}`)
             .setDescription(`${descriptionLines.join('\n')}\n\n💡 Want to change the time shown here? Click **Change timezone** below, or use \`/settings\` anytime.`)
             .setFooter({ text: `Total scheduled: ${schedules.length} • Powered by ${sourceName} • Your timezone: ${timezone}` })
             .setTimestamp();
@@ -2467,7 +2819,7 @@ else if (commandName === 'favorite') {
                     userId: interaction.user.id,
                     animeId: kitsuId,
                     animeTitle: animeTitle,
-                    lastEpisodes: attr.episodeCount || 0,
+                    lastEpisodes: attr.status === 'finished' ? (attr.episodeCount || 0) : 0,
                     source: 'kitsu'
                 });
 
@@ -2503,7 +2855,7 @@ else if (commandName === 'favorite') {
             userId: interaction.user.id,
             animeId: String(anime.id),
             animeTitle: animeTitle,
-            lastEpisodes: anime.episodes || 0,
+            lastEpisodes: getAiredEpisodes(anime),
             source: 'anilist'
         });
 
@@ -2595,8 +2947,12 @@ else if (commandName === 'myfavorites') {
 
     try {
         // 1️⃣ استعلام سريع وخفيف من Mongoose باستخدام select و lean
+        const page = interaction.options.getInteger('page') || 1;
+        const pageSize = 20;
         const favorites = await FavoriteItem.find({ userId: interaction.user.id })
             .select('animeTitle mediaType')
+            .skip((page - 1) * pageSize)
+            .limit(pageSize)
             .lean();
 
         if (!favorites || favorites.length === 0) {
@@ -2606,7 +2962,7 @@ else if (commandName === 'myfavorites') {
         }
 
         await interaction.editReply({
-           content: '⭐ Choose a saved anime or manga to view its details:',
+           content: `⭐ Choose a saved anime or manga to view its details (page ${page}). Use \`/myfavorites page:${page + 1}\` for more:`,
             components: buildSavedMediaComponents(
               'myfavorites_type_select',
                 favorites,
@@ -2635,7 +2991,7 @@ else if (commandName === 'help') {
             },
             {
                 name: '⭐ Personal',
-                value: '`/favorite` • Save anime or manga for DM alerts\n`/unfavorite` • Remove a favorite\n`/myfavorites` • View and reset your saved list\n`/verification-status` • Check 18+ access\n`/settings` • Timezone and notification preferences'
+                value: '`/favorite` • Save anime or manga for DM alerts\n`/unfavorite` • Remove a favorite\n`/myfavorites` • View and reset your saved list\n`/remove-saved` • Remove saved anime or manga DM alerts\n`/report` • Privately report a problem\n`/verification-status` • Check 18+ access\n`/settings` • Timezone and notification preferences'
             },
             {
                 name: '📢 Server Tools',
@@ -2643,7 +2999,7 @@ else if (commandName === 'help') {
             },
             {
                 name: '🧭 Start Here',
-                value: '`/start` • Welcome guide\n`/help` • This command list'
+                value: '`/start` • Welcome guide\n`/apicheck` • Check AniList and Kitsu\n`/help` • This command list'
             }
         )
         .setColor('#9b59b6')
@@ -2675,6 +3031,36 @@ else if (commandName === 'help') {
     });
 }
 
+  // 🎲 Random recommendation
+else if (commandName === 'random') {
+    const mediaType = interaction.options.getString('media') || 'anime';
+    await interaction.deferReply();
+    const query = `query ($type: MediaType) {
+      Page(page: 1, perPage: 10) { media(type: $type, sort: SCORE_DESC) {
+        id title { romaji english } episodes chapters status averageScore
+        description(asHtml: false) coverImage { large } siteUrl
+      } }
+    }`;
+    try {
+        const data = await fetchAniList(query, { type: mediaType === 'manga' ? 'MANGA' : 'ANIME' });
+        const list = data?.Page?.media || [];
+        const media = list[Math.floor(Math.random() * list.length)];
+        if (!media) throw new Error('No recommendation returned');
+        const title = media.title?.english || media.title?.romaji || 'Unknown title';
+        const embed = new EmbedBuilder().setTitle(`🎲 Random ${mediaType}: ${title}`)
+            .setURL(media.siteUrl || 'https://anilist.co').setThumbnail(media.coverImage?.large)
+            .setDescription(cleanMediaDescription(media.description, 500))
+            .addFields(
+                { name: mediaType === 'manga' ? 'Chapters' : 'Episodes', value: `${mediaType === 'manga' ? (media.chapters ?? 'N/A') : (media.episodes ?? 'N/A')}`, inline: true },
+                { name: 'Status', value: media.status || 'N/A', inline: true },
+                { name: 'Score', value: media.averageScore ? `${media.averageScore}/100` : 'N/A', inline: true }
+            ).setColor('#8e44ad');
+        return interaction.editReply({ embeds: [embed], components: buildMediaButtons(media, interaction, mediaType) });
+    } catch (err) {
+        logApiFailure('AniList', err, 'random');
+        return interaction.editReply('❌ I could not find a random recommendation right now. Please try again later.');
+    }
+}
   // 🔍 Anime Command
 else if (commandName === 'anime') {
     await interaction.deferReply();
@@ -2826,7 +3212,7 @@ else if (commandName === 'anime') {
 else if (commandName === 'servers') {
     // 1️⃣ التحقق من هوية المطور
     const DEV_ID = '1326815636395003966';
-    if (interaction.user.id !== DEV_ID) {
+    if (!isOwner(interaction)) {
         return interaction.reply({ 
             content: '❌ This command is restricted to the bot developer only!', 
             flags: 64 
@@ -2877,7 +3263,7 @@ else if (commandName === 'servers') {
 }
         // 🛠️ أمر الـ maintenance-dm
     else if (commandName === 'maintenance-dm') {
-        if (interaction.user.id !== '1326815636395003966') {
+        if (!isOwner(interaction)) {
             return interaction.reply({ content: '❌ Dev only command!', flags: 64 });
         }
 
@@ -2913,7 +3299,7 @@ else if (commandName === 'servers') {
     }
         else if (commandName === 'broadcast') {
     // 1. خاص بيك أنت فقط
-    if (interaction.user.id !== '1326815636395003966') {
+    if (!isOwner(interaction)) {
         return interaction.reply({ content: '❌ Dev only command!', flags: 64 });
     }
 
@@ -2948,7 +3334,7 @@ else if (commandName === 'servers') {
 }
     
             else if (commandName === 'getinvite') {
-        if (interaction.user.id !== '1326815636395003966') {
+        if (!isOwner(interaction)) {
             return interaction.reply({ content: '❌ Dev only command!', flags: 64 });
         }
 
@@ -2969,7 +3355,7 @@ else if (commandName === 'servers') {
         await interaction.reply({ content: `🔗 **Invite Link for ${guild.name}:** ${invite.url}`, flags: 64 });
     }
                 else if (commandName === 'bot-status') {
-        if (interaction.user.id !== '1326815636395003966') {
+        if (!isOwner(interaction)) {
             return interaction.reply({ content: '❌ Dev only command!', flags: 64 });
         }
 
@@ -3238,7 +3624,7 @@ else if (commandName === 'track') {
                     channelId: await getServerAlertChannelId(interaction.guildId, interaction.channelId),
                     animeId: kitsuId,
                     animeTitle: animeTitle,
-                    lastEpisodes: attr.episodeCount || 0,
+                    lastEpisodes: attr.status === 'finished' ? (attr.episodeCount || 0) : 0,
                     lastStatus: animeStatus,
                     source: 'kitsu'
                 });
@@ -3398,7 +3784,11 @@ else if (commandName === 'mytracked') {
     await interaction.deferReply({ ephemeral: true });
 
     try {
-        const items = await TrackedItem.find({ guildId: interaction.guildId });
+        const page = interaction.options.getInteger('page') || 1;
+        const pageSize = 20;
+        const items = await TrackedItem.find({ guildId: interaction.guildId })
+            .skip((page - 1) * pageSize)
+            .limit(pageSize);
         if (!items || items.length === 0) {
            return await interaction.editReply({
                content: 'No anime or manga is currently being tracked in this server. Use `/track <title>` to start tracking!'
@@ -3406,7 +3796,7 @@ else if (commandName === 'mytracked') {
         }
 
         await interaction.editReply({
-           content: '📌 Choose a tracked anime or manga to view its details:',
+           content: `📌 Choose a tracked anime or manga to view its details (page ${page}). Use \`/mytracked page:${page + 1}\` for more:`,
             components: buildSavedMediaComponents(
               'mytracked_type_select',
                 items,
@@ -3422,7 +3812,7 @@ else if (commandName === 'mytracked') {
    // 🩺 Owner Health Command
    else if (commandName === 'health') {
        const DEV_ID = process.env.DEV_USER_ID || '1326815636395003966';
-       if (interaction.user.id !== DEV_ID) {
+       if (!isOwner(interaction)) {
            return interaction.reply({
                content: '🚫 This command is reserved for the bot owner.',
                flags: MessageFlags.Ephemeral
@@ -3465,7 +3855,7 @@ else if (commandName === 'mytracked') {
     const DEV_ID = process.env.DEV_USER_ID || '1326815636395003966';
 
     // 1️⃣ حماية الأمر للمطور فقط
-    if (interaction.user.id !== DEV_ID) {
+    if (!isOwner(interaction)) {
         return interaction.reply({
             content: '🚫 This command is reserved for the bot developer only.',
             flags: MessageFlags.Ephemeral
@@ -3528,12 +3918,18 @@ async function runUpdateChecks() {
         
         for (const item of tracked) {
             try {
+                const guild = client.guilds.cache.get(item.guildId);
+                const trackedChannel = guild ? await guild.channels.fetch(item.channelId).catch(() => null) : null;
+                if (!guild || !trackedChannel) {
+                    await TrackedItem.deleteOne({ _id: item._id });
+                    continue;
+                }
                 if (item.mediaType === 'manga' || item.source === 'mangadex') {
                     const currentChapter = await fetchMangaDexLatestChapter(item.animeId);
                     if (currentChapter > (item.lastEpisodes || 0)) {
                         const serverSettings = await ServerSettings.findOne({ guildId: item.guildId }).lean();
                         if (serverSettings?.serverAlertsEnabled !== false) {
-                            const channel = await client.channels.fetch(item.channelId).catch(() => null);
+                            const channel = trackedChannel;
                             if (channel) {
                                 const embed = new EmbedBuilder()
                                     .setTitle('🚨 New Manga Chapter Alert!')
@@ -3576,7 +3972,7 @@ async function runUpdateChecks() {
                 }
 
                 if (anime) {
-                    const currentEps = isKitsu ? anime.episodes : getAiredEpisodes(anime);
+                    const currentEps = getCurrentAiredEpisodes(anime, isKitsu ? 'kitsu' : 'anilist');
                     const lastEps = item.lastEpisodes || 0;
 
                     if (currentEps > lastEps) {
@@ -3585,7 +3981,7 @@ async function runUpdateChecks() {
                             continue;
                         }
 
-                        const channel = await client.channels.fetch(item.channelId).catch(() => null);
+                        const channel = trackedChannel;
 
                         if (channel) {
                             const animeTitle = (anime.title && (anime.title.english || anime.title.romaji)) || anime.title || item.animeTitle;
@@ -3673,9 +4069,10 @@ async function runUpdateChecks() {
                 }
 
                 if (anime) {
-                    const currentEps = item.source === 'kitsu' || String(item.animeId).startsWith('kitsu_')
-                        ? anime.episodes
-                        : getAiredEpisodes(anime);
+                    const currentEps = getCurrentAiredEpisodes(
+                        anime,
+                        item.source === 'kitsu' || String(item.animeId).startsWith('kitsu_') ? 'kitsu' : 'anilist'
+                    );
                     const lastEps = item.lastEpisodes || 0;
 
                     if (currentEps > lastEps) {
@@ -3720,6 +4117,13 @@ async function runUpdateChecks() {
    }
 
 }
+    }).catch(async error => {
+        console.error('Unhandled interaction error:', error);
+        try {
+            if (interaction.isRepliable() && !interaction.replied && !interaction.deferred) await interaction.reply({ content: '? Something went wrong. Please try again later.', flags: MessageFlags.Ephemeral });
+            else if (interaction.isRepliable()) await interaction.followUp({ content: '? Something went wrong. Please try again later.', flags: MessageFlags.Ephemeral });
+        } catch (replyError) { console.error('Interaction error response failed:', replyError.message); }
+    });
 });
 // Log in to Discord
 client.login(process.env.DISCORD_TOKEN);
