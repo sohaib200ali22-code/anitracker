@@ -1479,22 +1479,68 @@ if (interaction.isButton()) {
             if (mediaType === 'manga' && /^[0-9a-f-]{36}$/i.test(mediaId)) {
                 try {
                     const response = await axios.get(`https://api.mangadex.org/manga/${mediaId}`, {
-                        params: { 'includes[]': 'cover_art' },
+                        params: { 'includes[]': ['cover_art', 'author', 'artist'] },
                         timeout: 10000
                     });
                     const item = response.data?.data;
                     const title = item?.attributes?.title?.en || Object.values(item?.attributes?.title || {})[0];
                     if (!item || !title) return interaction.editReply({ content: '❌ Failed to load more information. Please try again later.', ephemeral: true });
-                    const description = item.attributes.description?.en || Object.values(item.attributes.description || {})[0] || 'No synopsis available.';
+                    const attributes = item.attributes || {};
+                    const description = attributes.description?.en || Object.values(attributes.description || {})[0] || 'No synopsis available.';
+                    const authors = item.relationships
+                        ?.filter(relation => relation.type === 'author' || relation.type === 'artist')
+                        .map(relation => relation.attributes?.name)
+                        .filter(Boolean);
+                    const tags = attributes.tags
+                        ?.map(tag => tag.attributes?.name?.en || Object.values(tag.attributes?.name || {})[0])
+                        .filter(Boolean)
+                        .slice(0, 8)
+                        .join(', ') || 'N/A';
+                    let aniListDetails = null;
+                    try {
+                        const aniListData = await fetchAniList(`
+                            query ($search: String) {
+                              Media (search: $search, type: MANGA) {
+                                startDate { year month day }
+                                genres
+                                averageScore
+                                characters(page: 1, perPage: 8, sort: FAVOURITES_DESC) {
+                                  nodes { name { full } }
+                                }
+                              }
+                            }`,
+                            { search: title }
+                        );
+                        aniListDetails = aniListData?.Media || null;
+                    } catch (err) {
+                        console.warn('AniList manga detail enrichment failed:', err.message);
+                    }
+                    const releaseDate = aniListDetails?.startDate?.year
+                        ? [aniListDetails.startDate.year, aniListDetails.startDate.month, aniListDetails.startDate.day]
+                            .filter(Boolean)
+                            .join('-')
+                        : (attributes.year ? String(attributes.year) : 'N/A');
+                    const characterList = aniListDetails?.characters?.nodes
+                        ?.map(character => character.name?.full)
+                        .filter(Boolean)
+                        .slice(0, 8)
+                        .join(', ') || 'N/A';
                     const details = new EmbedBuilder()
                         .setTitle(`📖 ${title}`)
                         .setURL(`https://mangadex.org/title/${mediaId}`)
                         .setDescription(cleanMediaDescription(description, 3800))
                         .addFields(
                             { name: 'Type', value: 'MANGADEX MANGA', inline: true },
-                            { name: 'Status', value: item.attributes.status?.toUpperCase() || 'N/A', inline: true },
-                            { name: 'Chapters', value: `${item.attributes.lastChapter || 'N/A'}`, inline: true },
-                            { name: 'Volumes', value: `${item.attributes.lastVolume || 'N/A'}`, inline: true }
+                            { name: 'Status', value: attributes.status?.toUpperCase() || 'N/A', inline: true },
+                            { name: 'Release Date', value: releaseDate, inline: true },
+                            { name: 'Chapters', value: `${attributes.lastChapter || 'N/A'}`, inline: true },
+                            { name: 'Volumes', value: `${attributes.lastVolume || 'N/A'}`, inline: true },
+                            { name: 'Score', value: aniListDetails?.averageScore ? `${aniListDetails.averageScore} / 100` : 'N/A', inline: true },
+                            { name: 'Authors / Artists', value: authors?.join(', ') || 'N/A', inline: false },
+                            { name: 'Main Characters', value: characterList, inline: false },
+                            { name: 'Genres', value: aniListDetails?.genres?.join(', ') || tags, inline: false },
+                            { name: 'Content Rating', value: attributes.contentRating?.toUpperCase() || 'N/A', inline: true },
+                            { name: 'Original Language', value: attributes.originalLanguage?.toUpperCase() || 'N/A', inline: true }
                         )
                         .setColor('#3498db')
                         .setFooter({ text: 'AniTracker • MangaDex REST API' });
