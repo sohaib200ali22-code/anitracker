@@ -874,8 +874,14 @@ async function sendDevAlert(interaction, message) {
 client.once('clientReady', async () => {
     console.log(`Logged in as ${client.user.tag}!`);
 
-    client.user.setActivity('AniList for new episodes 📺', { type: ActivityType.Watching });
-    client.user.setStatus('online');
+    client.user.setPresence({
+        activities: [{
+            name: '/help - anitracker.com',
+            type: ActivityType.Custom,
+            state: '/help  -  /start' // Text displayed in the bubble
+        }],
+        status: 'dnd'
+    });
 
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
     try {
