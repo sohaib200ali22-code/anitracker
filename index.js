@@ -1166,37 +1166,41 @@ if (interaction.isStringSelectMenu()) {
         });
     }
 
-    if (interaction.customId === 'settings_select') {
-        const setting = interaction.values[0];
+    // 1. معالجة زر Timezone
+if (interaction.customId === 'settings_timezone') {
+    const modal = new ModalBuilder()
+        .setCustomId('settings_timezone_modal')
+        .setTitle('Set Your Timezone');
 
-        if (setting === 'timezone') {
-            const modal = new ModalBuilder()
-                .setCustomId('settings_timezone_modal')
-                .setTitle('Set Your Timezone');
-            const timezoneInput = new TextInputBuilder()
-                .setCustomId('timezone')
-                .setLabel('City or IANA timezone')
-                .setPlaceholder('Cairo, Dubai, New York, or Africa/Cairo')
-                .setStyle(TextInputStyle.Short)
-                .setRequired(true);
-            modal.addComponents(new ActionRowBuilder().addComponents(timezoneInput));
-            return interaction.showModal(modal);
-        }
+    const timezoneInput = new TextInputBuilder()
+        .setCustomId('timezone')
+        .setLabel('City or IANA timezone')
+        .setPlaceholder('Cairo, Dubai, New York, or Africa/Cairo')
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true);
 
-        if (setting === 'alert-channel') {
-            if (!interaction.guildId) {
-                return interaction.update({
-                    content: '❌ Alert channel settings can only be changed inside a server.',
-                    components: []
-                });
-            }
-            if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageChannels)) {
-                return interaction.update({
-                    content: '❌ You need **Manage Channels** permission to change the server alert channel.',
-                    components: []
-                });
-            }
+    modal.addComponents(new ActionRowBuilder().addComponents(timezoneInput));
+    return interaction.showModal(modal);
+}
 
+// 2. معالجة زر Alert Channel
+if (interaction.customId === 'settings_alert_channel') {
+    if (!interaction.guildId) {
+        return interaction.update({
+            content: '❌ Alert channel settings can only be changed inside a server.',
+            components: []
+        });
+    }
+
+    if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageChannels)) {
+        return interaction.update({
+            content: '❌ You need **Manage Channels** permission to change the server alert channel.',
+            components: []
+        });
+    }
+
+    // قم بوضع باقي كود اختيار القناة هنا...
+}
             const channelMenu = new ChannelSelectMenuBuilder()
                 .setCustomId('settings_alert_channel_select')
                 .setPlaceholder('Choose the alert channel')
