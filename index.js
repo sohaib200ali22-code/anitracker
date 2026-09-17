@@ -237,28 +237,25 @@ function buildGenreMenu(mediaType, status) {
 }
 
 function buildSettingsMenu() {
-    const menu = new StringSelectMenuBuilder()
-        .setCustomId('settings_select')
-        .setPlaceholder('Choose a setting to change')
-        .addOptions(
-            {
-                label: 'Timezone',
-                value: 'timezone',
-                description: 'Set the timezone used for your schedule'
-            },
-            {
-                label: 'Alert Channel',
-                value: 'alert-channel',
-                description: 'Choose where server episode alerts are sent'
-            },
-            {
-                label: 'Notifications',
-                value: 'notifications',
-                description: 'Enable or disable DM and server alerts'
-            }
-        );
+    return new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+            .setCustomId('settings_timezone')
+            .setLabel('Timezone')
+            .setEmoji('🌐')
+            .setStyle(ButtonStyle.Primary),
 
-    return new ActionRowBuilder().addComponents(menu);
+        new ButtonBuilder()
+            .setCustomId('settings_alert_channel')
+            .setLabel('Alert Channel')
+            .setEmoji('📢')
+            .setStyle(ButtonStyle.Secondary),
+
+        new ButtonBuilder()
+            .setCustomId('settings_notifications')
+            .setLabel('Notifications')
+            .setEmoji('🔔')
+            .setStyle(ButtonStyle.Secondary)
+    );
 }
 
 function buildNotificationButtons() {
@@ -296,7 +293,6 @@ function buildSetupChannelMenu() {
 
     return new ActionRowBuilder().addComponents(menu);
 }
-
 function buildSavedMediaMenu(customId, items, placeholder) {
     const menu = new StringSelectMenuBuilder()
         .setCustomId(customId)
@@ -1116,7 +1112,7 @@ if (interaction.isStringSelectMenu()) {
                buildResetButton('favorites')
            ]
        });
-   }
+   
 
    if (interaction.customId === 'myfavorites_select') {
         const favorite = await FavoriteItem.findOne({
