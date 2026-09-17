@@ -811,25 +811,6 @@ const allCommands = [
             )
     ),
     new SlashCommandBuilder()
-        .setName('bot-status-change')
-        .setDescription('(Dev only) Change the bot online status')
-        .addStringOption(option =>
-            option.setName('status')
-                .setDescription('The bot status')
-                .setRequired(true)
-                .addChoices(
-                    { name: 'Online', value: 'online' },
-                    { name: 'Idle', value: 'idle' },
-                    { name: 'Do Not Disturb', value: 'dnd' }
-                )
-        )
-        .addStringOption(option =>
-            option.setName('text')
-                .setDescription('Text shown in the bot status bubble (optional)')
-                .setMaxLength(128)
-                .setRequired(false)
-        ),
-    new SlashCommandBuilder()
         .setName('verify')
         .setDescription('(Owner only) Approve a user for 18+ genre recommendations')
         .addUserOption(option =>
@@ -851,7 +832,6 @@ const OWNER_COMMAND_NAMES = new Set([
     'broadcast',
     'maintenance-dm',
     'bot-status',
-    'bot-status-change',
     'getinvite',
     'testalert',
     'health',
@@ -3392,30 +3372,6 @@ else if (commandName === 'servers') {
 
         await interaction.reply({
             content: `✅ Bot activity updated to: **${activity}**`,
-            flags: 64
-        });
-    }
-    else if (commandName === 'bot-status-change') {
-        if (!isOwner(interaction)) {
-            return interaction.reply({ content: '❌ Dev only command!', flags: 64 });
-        }
-
-        const status = interaction.options.getString('status');
-        const text = interaction.options.getString('text');
-        const presence = { status };
-
-        if (text) {
-            presence.activities = [{
-                name: text,
-                type: ActivityType.Custom,
-                state: text
-            }];
-        }
-
-        interaction.client.user.setPresence(presence);
-
-        await interaction.reply({
-            content: `✅ Bot status updated to: **${status === 'dnd' ? 'Do Not Disturb' : status}**${text ? `\n✅ Status text updated to: **${text}**` : ''}`,
             flags: 64
         });
     }
