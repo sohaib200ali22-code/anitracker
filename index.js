@@ -1353,7 +1353,7 @@ if (interaction.customId === 'settings_alert_channel') {
             });
         }
 
-        // 3. Render AniList Data
+// 3. Render AniList Data
         try {
             const media = mediaList[Math.floor(Math.random() * mediaList.length)];
             const title = (media.title && (media.title.english || media.title.romaji)) || `${mediaType} title`;
@@ -1376,59 +1376,50 @@ if (interaction.customId === 'settings_alert_channel') {
             const components = [];
             components.push(...buildMediaButtons(media, interaction, mediaType));
 
-            await interaction.editReply({ content: '', embeds: [embed], components });
+            return await interaction.editReply({ content: '', embeds: [embed], components });
         } catch (err) {
             console.error('genre recommendation error:', err);
-            await interaction.editReply({
+            return await interaction.editReply({
                 content: '❌ Failed to fetch this recommendation. Please try `/genre` again.',
                 components: []
             });
         }
     }
-    return;
 
-if (interaction.isChannelSelectMenu()) {
-    if (!interaction.guildId || !interaction.member) {
+    if (interaction.isChannelSelectMenu()) {
+        if (!interaction.guildId || !interaction.member) {
+            return interaction.update({
+                content: '❌ You need **Manage Guild** permissions.',
+                components: []
+            });
+        }
+
+        const channelId = interaction.values[0];
+        await ServerSettings.findOneAndUpdate(
+            { guildId: interaction.guildId },
+            { $set: { alertChannelId: channelId, serverAlertsEnabled: true } },
+            { upsert: true, new: true, setDefaultsOnInsert: true }
+        );
+        await TrackedItem.updateMany(
+            { guildId: interaction.guildId },
+            { $set: { channelId } }
+        );
+
         return interaction.update({
-            content: '❌ You need **Manage Guild** permissions.',
-            components: []
-        });
-    }
-}
-    const channelId = interaction.values[0];
-    await ServerSettings.findOneAndUpdate(
-        { guildId: interaction.guildId },
-        { $set: { alertChannelId: channelId, serverAlertsEnabled: true } },
-        { upsert: true, new: true, setDefaultsOnInsert: true }
-    );
-    await TrackedItem.updateMany(
-        { guildId: interaction.guildId },
-        { $set: { channelId } }
-    );
-
-    return interaction.update({
-        content: `✅ Server episode alerts will now be sent to <#${channelId}>.`,
-        components: []
-    });
-}
-
-if (interaction.isChannelSelectMenu() && interaction.customId === 'setup_alert_channel_select') {
-    if (!interaction.guildId || !canRunServerSetup(interaction)) {
-        return interaction.update({
-            content: '❌ Only the server owner, an administrator, or the bot owner can finish AniTracker setup.',
+            content: `✅ Server episode alerts will now be sent to <#${channelId}>.`,
             components: []
         });
     }
 
-    const channelId = interaction.values[0];
-    const channel = await interaction.guild.channels.fetch(channelId).catch(() => null);
-    const botMember = await interaction.guild.members.fetch(client.user.id).catch(() => null);
-    if (!channel || !botMember) {
-        return interaction.update({
-            content: '❌ I could not verify the selected channel. Please run `/setup` again.',
-            components: []
-        });
+    if (interaction.isChannelSelectMenu() && interaction.customId === 'setup_alert_channel_select') {
+        if (!interaction.guildId || !canRunServerSetup(interaction)) {
+            return interaction.update({
+                content: '❌ Only the server owner, an administrator, or the bot owner can finish AniTracker setup.',
+                components: []
+            });
+        }
     }
+
 
     const requiredPermissions = [
         PermissionFlagsBits.ViewChannel,
