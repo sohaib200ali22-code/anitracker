@@ -4270,7 +4270,7 @@ async function runUpdateChecks() {
                             });
                         }
 
-                        // Always update database so it doesn't loop forever
+// Always update database so it doesn't loop forever
                         item.lastEpisodes = currentEps;
                         await item.save();
                     }
@@ -4283,16 +4283,22 @@ async function runUpdateChecks() {
         }
     } catch (err) {
         console.error('Error in checkUpdates main loop:', err);
-   }
-
+    }
 }
-    }).catch(async error => {
-        console.error('Unhandled interaction error:', error);
-        try {
-            if (interaction.isRepliable() && !interaction.replied && !interaction.deferred) await interaction.reply({ content: '? Something went wrong. Please try again later.', flags: MessageFlags.Ephemeral });
-            else if (interaction.isRepliable()) await interaction.followUp({ content: '? Something went wrong. Please try again later.', flags: MessageFlags.Ephemeral });
-        } catch (replyError) { console.error('Interaction error response failed:', replyError.message); }
-    });
+
+// Catch errors for interaction handler
+}).catch(async error => {
+    console.error('Unhandled interaction error:', error);
+    try {
+        if (interaction.isRepliable() && !interaction.replied && !interaction.deferred) {
+            await interaction.reply({ content: '❌ Something went wrong. Please try again later.', flags: MessageFlags.Ephemeral });
+        } else if (interaction.isRepliable()) {
+            await interaction.followUp({ content: '❌ Something went wrong. Please try again later.', flags: MessageFlags.Ephemeral });
+        }
+    } catch (replyError) { 
+        console.error('Interaction error response failed:', replyError.message); 
+    }
 });
+
 // Log in to Discord
 client.login(process.env.DISCORD_TOKEN);
