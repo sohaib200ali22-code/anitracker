@@ -4264,13 +4264,13 @@ async function runUpdateChecks() {
                                 .setColor('#f1c40f')
                                 .setTimestamp();
 
-                            // Send DM (catch error if user closed DMs)
+// Send DM (catch error if user closed DMs)
                             await user.send({ embeds: [embed] }).catch(() => {
                                 console.log(`Could not send DM to user ${item.userId} (DMs might be closed).`);
                             });
                         }
 
-// Always update database so it doesn't loop forever
+                        // Always update database so it doesn't loop forever
                         item.lastEpisodes = currentEps;
                         await item.save();
                     }
@@ -4285,7 +4285,7 @@ async function runUpdateChecks() {
         console.error('Error in checkUpdates main loop:', err);
     }
 }
-});
+
 // Catch errors for interaction handler
 process.on('unhandledRejection', async (error) => {
     console.error('Unhandled interaction error:', error);
