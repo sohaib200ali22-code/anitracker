@@ -4287,17 +4287,8 @@ async function runUpdateChecks() {
 }
 
 // Catch errors for interaction handler
-}).catch(async error => {
+process.on('unhandledRejection', async (error) => {
     console.error('Unhandled interaction error:', error);
-    try {
-        if (interaction.isRepliable() && !interaction.replied && !interaction.deferred) {
-            await interaction.reply({ content: '❌ Something went wrong. Please try again later.', flags: MessageFlags.Ephemeral });
-        } else if (interaction.isRepliable()) {
-            await interaction.followUp({ content: '❌ Something went wrong. Please try again later.', flags: MessageFlags.Ephemeral });
-        }
-    } catch (replyError) { 
-        console.error('Interaction error response failed:', replyError.message); 
-    }
 });
 
 // Log in to Discord
