@@ -904,6 +904,25 @@ const allCommands = [
             .setRequired(true)
     ),
     new SlashCommandBuilder()
+    .setName('setstatus')
+    .setDescription('تغيير حالة البوت والفقاعة النصية')
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+    .addStringOption(option =>
+        option.setName('status')
+            .setDescription('اختر الحالة')
+            .setRequired(true)
+            .addChoices(
+                { name: '🟢 متصل (Online)', value: 'online' },
+                { name: '🟡 خامل (Idle)', value: 'idle' },
+                { name: '🔴 عدم الإزعاج (DND)', value: 'dnd' },
+                { name: '⚪ مخفي (Invisible)', value: 'invisible' }
+            ))
+    .addStringOption(option =>
+        option.setName('text')
+            .setDescription('اكتب النص الذي سيظهر داخل الفقاعة')
+            .setRequired(false))
+    
+    new SlashCommandBuilder()
     .setName('getinvite')
     .setDescription('(Dev only) Generate an invite link for a server')
     .addStringOption(option =>
@@ -1004,13 +1023,14 @@ client.once('clientReady', async () => {
     console.log(`Logged in as ${client.user.tag}!`);
 
     client.user.setPresence({
-        activities: [{
-            name: '/help - anitracker.com',
-            type: ActivityType.Custom,
-            state: '/help  -  /start' // Text displayed in the bubble
-        }],
-        status: 'dnd'
-    });
+    activities: [{
+        name: 'custom', // اسم داخلي فقط
+        type: ActivityType.Custom,
+        state: '/help  -  /start' // النص الذي سيظهر داخل الفقاعة
+    }],
+    status: 'dnd'
+});
+
 
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
     try {
@@ -3400,6 +3420,27 @@ else if (commandName === 'servers') {
         await interaction.editReply('❌ Failed to fetch server list.');
     }
 }
+    if (interaction.isChatInputCommand()) {
+    if (interaction.commandName === 'setstatus') {
+        const statusChoice = interaction.options.getString('status');
+        const textChoice = interaction.options.getString('text') || '';
+
+        await interaction.client.user.setPresence({
+            activities: textChoice ? [{
+                name: 'custom',
+                type: ActivityType.Custom,
+                state: textChoice
+            }] : [],
+            status: statusChoice
+        });
+
+        return interaction.reply({ 
+            content: `تم تغيير حالة البوت إلى **${statusChoice}** ${textChoice ? `والفقاعة إلى: "${textChoice}"` : ''}`, 
+            ephemeral: true 
+        });
+    }
+    
+        
         // 🛠️ أمر الـ maintenance-dm
     else if (commandName === 'maintenance-dm') {
         if (!isOwner(interaction)) {
