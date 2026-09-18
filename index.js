@@ -1386,7 +1386,6 @@ if (interaction.customId === 'settings_alert_channel') {
         }
     }
     return;
-}
 
 if (interaction.isChannelSelectMenu()) {
     if (!interaction.guildId || !interaction.member) {
@@ -1396,8 +1395,6 @@ if (interaction.isChannelSelectMenu()) {
         });
     }
 }
-
-
     const channelId = interaction.values[0];
     await ServerSettings.findOneAndUpdate(
         { guildId: interaction.guildId },
