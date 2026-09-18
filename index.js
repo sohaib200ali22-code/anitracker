@@ -920,7 +920,7 @@ const allCommands = [
     .addStringOption(option =>
         option.setName('text')
             .setDescription('اكتب النص الذي سيظهر داخل الفقاعة')
-            .setRequired(false))
+            .setRequired(false)),
     
     new SlashCommandBuilder()
     .setName('getinvite')
