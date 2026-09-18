@@ -1388,13 +1388,15 @@ if (interaction.customId === 'settings_alert_channel') {
     return;
 }
 
-if (interaction.isChannelSelectMenu() && interaction.customId === 'settings_alert_channel_select') {
-    if (!interaction.guildId || !interaction.memberPermissions?.has(PermissionFlagsBits.ManageChannels)) {
+if (interaction.isChannelSelectMenu()) {
+    if (!interaction.guildId || !interaction.member) {
         return interaction.update({
-            content: '❌ You need **Manage Channels** permission to change the server alert channel.',
+            content: '❌ You need **Manage Guild** permissions.',
             components: []
         });
     }
+}
+
 
     const channelId = interaction.values[0];
     await ServerSettings.findOneAndUpdate(
