@@ -1451,30 +1451,28 @@ if (interaction.customId === 'settings_alert_channel') {
         content: `✅ AniTracker setup is complete!\n\n📢 Tracking and episode alerts will use <#${channelId}>.\n\nYou can change this later with \`/settings\` → **Alert Channel**.`,
         components: []
     });
-}
 
-if (interaction.isModalSubmit() && interaction.customId === 'timezone_modal') {
+    if (interaction.isModalSubmit() && interaction.customId === 'timezone_modal') {
+        const input = interaction.fields.getTextInputValue('timezone').trim();
+        const timezone = resolveTimezone(input);
+        if (!isValidTimezone(timezone)) {
+            return interaction.reply({
+                content: '❌ I could not recognize that city. Try a city such as `Cairo`, `Dubai`, `London`, or `New York`, or enter an IANA timezone like `Africa/Cairo`.',
+                flags: MessageFlags.Ephemeral
+            });
+        }
 
-    const input = interaction.fields.getTextInputValue('timezone').trim();
-    const timezone = resolveTimezone(input);
-    if (!isValidTimezone(timezone)) {
+        await UserSettings.findOneAndUpdate(
+            { userId: interaction.user.id },
+            { $set: { timezone } },
+            { upsert: true, new: true, setDefaultsOnInsert: true }
+        );
+
         return interaction.reply({
-            content: '❌ I could not recognize that city. Try a city such as `Cairo`, `Dubai`, `London`, or `New York`, or enter an IANA timezone like `Africa/Cairo`.',
+            content: `✅ Your timezone is now set to \`${timezone}\`.`,
             flags: MessageFlags.Ephemeral
         });
     }
-
-    await UserSettings.findOneAndUpdate(
-        { userId: interaction.user.id },
-        { $set: { timezone } },
-        { upsert: true, new: true, setDefaultsOnInsert: true }
-    );
-
-    return interaction.reply({
-        content: `✅ Your timezone is now set to \`${timezone}\`.`,
-        flags: MessageFlags.Ephemeral
-    });
-}
 
 if (interaction.isButton()) {
     if (interaction.customId.startsWith('remove_saved_cancel_')) {
