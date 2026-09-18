@@ -1453,7 +1453,8 @@ if (interaction.customId === 'settings_alert_channel') {
     });
 }
 
-if (interaction.isModalSubmit() && interaction.customId === 'settings_timezone_modal') {
+if (interaction.isModalSubmit() && interaction.customId === 'timezone_modal') {
+
     const input = interaction.fields.getTextInputValue('timezone').trim();
     const timezone = resolveTimezone(input);
     if (!isValidTimezone(timezone)) {
