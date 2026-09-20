@@ -976,7 +976,7 @@ const allCommands = [
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .addStringOption(option =>
         option.setName('status')
-            .setDescription('اختر الحالة')
+            .setDescription('choose')
             .setRequired(true)
             .addChoices(
                 { name: '🟢 متصل (Online)', value: 'online' },
@@ -987,7 +987,7 @@ const allCommands = [
     )
     .addStringOption(option =>
         option.setName('text')
-            .setDescription('اكتب النص الذي سيظهر داخل الفقاعة')
+            .setDescription('write what will appear in the status')
             .setRequired(false)
     ),    
     new SlashCommandBuilder()
@@ -3477,27 +3477,7 @@ else if (commandName === 'servers') {
         await interaction.editReply('❌ Failed to fetch server list.');
     }
 }
-    if (interaction.isChatInputCommand()) {
-    if (interaction.commandName === 'setstatus') {
-        const statusChoice = interaction.options.getString('status');
-        const textChoice = interaction.options.getString('text') || '';
-
-        await interaction.client.user.setPresence({
-            activities: textChoice ? [{
-                name: 'custom',
-                type: ActivityType.Custom,
-                state: textChoice
-            }] : [],
-            status: statusChoice
-        });
-
-        return interaction.reply({ 
-            content: `تم تغيير حالة البوت إلى **${statusChoice}** ${textChoice ? `والفقاعة إلى: "${textChoice}"` : ''}`, 
-            ephemeral: true 
-        });
-    }
     
-        
         // 🛠️ أمر الـ maintenance-dm
     else if (commandName === 'maintenance-dm') {
         if (!isOwner(interaction)) {
@@ -3591,28 +3571,30 @@ else if (commandName === 'servers') {
         const invite = await channel.createInvite({ maxAge: 3600, maxUses: 1 });
         await interaction.reply({ content: `🔗 **Invite Link for ${guild.name}:** ${invite.url}`, flags: 64 });
     }
-else if (commandName === 'bot-status' || commandName === 'setstatus') {
+
+    else if (commandName === 'setstatus') {
     if (!isOwner(interaction)) {
         return interaction.reply({ content: '❌ Dev only command!', flags: 64 });
     }
 
-    const statusChoice = interaction.options.getString('status'); // 'online', 'idle', 'dnd', 'invisible'
-    const activity = interaction.options.getString('text') || interaction.options.getString('activity');
+    const statusChoice = interaction.options.getString('status');
+    const textChoice = interaction.options.getString('text') || '';
 
-    if (statusChoice) {
-        await interaction.client.user.setStatus(statusChoice);
-    }
+    await interaction.client.user.setPresence({
+        activities: textChoice ? [{
+            name: 'custom',
+            type: ActivityType.Custom,
+            state: textChoice
+        }] : [],
+        status: statusChoice
+    });
 
-    if (activity) {
-        const type = parseInt(interaction.options.getString('type')) || 0;
-        interaction.client.user.setActivity(activity, { type });
-    }
-
-    await interaction.reply({
-        content: '✅ Bot status/activity updated!',
+    return interaction.reply({
+        content: `✅ Status updated to **${statusChoice}** ${textChoice ? `with bubble: "${textChoice}"` : ''}`,
         flags: 64
     });
 }
+
     // 📖 Manga Command
 else if (commandName === 'manga') {
     await interaction.deferReply();
