@@ -1158,98 +1158,99 @@ client.on('guildCreate', async guild => {
     }
 });
 
-client.on('interactionCreate', interaction => {
-    Promise.resolve().then(async () => {
-   updateChecker = runUpdateChecks;
-   // 🎲 Genre recommendation menus & 🔘 Handle Interactive Buttons
-if (interaction.isStringSelectMenu()) {
-   if (interaction.customId === 'remove_saved_type_select') {
-       const mediaType = interaction.values[0];
-       const label = mediaType === 'manga' ? 'manga' : 'anime';
-       const count = await FavoriteItem.countDocuments({
-           userId: interaction.user.id,
-           mediaType
-       });
-       if (!count) {
-           return interaction.update({
-               content: `❌ You have no saved ${label} DM alerts to remove.`,
-               components: []
-           });
-       }
-       return interaction.update({
-           content: `⚠️ This will remove all **${count}** saved ${label} DM alerts. Tracked server items will not be changed.\n\nAre you sure you want to continue?`,
-           components: [buildRemoveSavedConfirmation(mediaType, 1)]
-       });
-   }
+client.on('interactionCreate', async (interaction) => {
+    updateChecker = runUpdateChecks;
 
-   if (interaction.customId === 'myfavorites_type_select') {
-       const favorites = await FavoriteItem.find({
-           userId: interaction.user.id,
-           mediaType: interaction.values[0]
-       }).lean();
-       if (!favorites.length) {
-           return interaction.update({
-               content: '❌ There are no saved items of that type.',
-               components: []
-           });
-       }
-       return interaction.update({
-           content: `⭐ Choose a saved ${interaction.values[0] === 'manga' ? 'manga' : 'anime'} to view its details:`,
-           components: [
-               buildSavedMediaMenu('myfavorites_select', favorites, 'Choose a saved item'),
-               buildResetButton('favorites')
-           ]
-       });
-   
-
-   if (interaction.customId === 'myfavorites_select') {
-        const favorite = await FavoriteItem.findOne({
-            _id: interaction.values[0],
-            userId: interaction.user.id
-        }).lean();
-        if (!favorite) {
-            return interaction.update({ content: '❌ That saved item is no longer available.', components: [] });
-        }
-        return interaction.update({
-            content: `⭐ **${favorite.animeTitle}**\nType: **${favorite.mediaType === 'manga' ? 'Manga' : 'Anime'}**\nUse \`/unfavorite ${favorite.animeTitle}\` to remove it.`,
-            components: []
-        });
-    }
-
-    if (interaction.customId === 'mytracked_select') {
-        const trackedItem = await TrackedItem.findOne({
-            _id: interaction.values[0],
-            guildId: interaction.guildId
-        }).lean();
-        if (!trackedItem) {
-            return interaction.update({ content: '❌ That tracked item is no longer available.', components: [] });
-        }
-        return interaction.update({
-            content: `🎯 **${trackedItem.animeTitle}**\nType: **${trackedItem.mediaType === 'manga' ? 'Manga' : 'Anime'}**\nAlerts: <#${trackedItem.channelId}>`,
-            components: []
-        });
-    }
-
-    if (interaction.customId === 'mytracked_type_select') {
-        const items = await TrackedItem.find({
-            guildId: interaction.guildId,
-            mediaType: interaction.values[0]
-        }).lean();
-        if (!items.length) {
+    // 🎲 Genre recommendation menus & 🔘 Handle Interactive Buttons
+    if (interaction.isStringSelectMenu()) {
+        if (interaction.customId === 'remove_saved_type_select') {
+            const mediaType = interaction.values[0];
+            const label = mediaType === 'manga' ? 'manga' : 'anime';
+            const count = await FavoriteItem.countDocuments({
+                userId: interaction.user.id,
+                mediaType
+            });
+            if (!count) {
+                return interaction.update({
+                    content: `❌ You have no saved ${label} DM alerts to remove.`,
+                    components: []
+                });
+            }
             return interaction.update({
-                content: '❌ There are no tracked items of that type.',
+                content: `⚠️ This will remove all **${count}** saved ${label} DM alerts. Tracked server items will not be changed.\n\nAre you sure you want to continue?`,
+                components: [buildRemoveSavedConfirmation(mediaType, 1)]
+            });
+        }
+
+        if (interaction.customId === 'myfavorites_type_select') {
+            const favorites = await FavoriteItem.find({
+                userId: interaction.user.id,
+                mediaType: interaction.values[0]
+            }).lean();
+            if (!favorites.length) {
+                return interaction.update({
+                    content: '❌ There are no saved items of that type.',
+                    components: []
+                });
+            }
+            return interaction.update({
+                content: `⭐ Choose a saved ${interaction.values[0] === 'manga' ? 'manga' : 'anime'} to view its details:`,
+                components: [
+                    buildSavedMediaMenu('myfavorites_select', favorites, 'Choose a saved item'),
+                    buildResetButton('favorites')
+                ]
+            });
+        } // 👈 Added missing brace here
+
+        if (interaction.customId === 'myfavorites_select') {
+            const favorite = await FavoriteItem.findOne({
+                _id: interaction.values[0],
+                userId: interaction.user.id
+            }).lean();
+            if (!favorite) {
+                return interaction.update({ content: '❌ That saved item is no longer available.', components: [] });
+            }
+            return interaction.update({
+                content: `⭐ **${favorite.animeTitle}**\nType: **${favorite.mediaType === 'manga' ? 'Manga' : 'Anime'}**\nUse \`/unfavorite ${favorite.animeTitle}\` to remove it.`,
                 components: []
             });
         }
-        return interaction.update({
-            content: `📌 Choose a tracked ${interaction.values[0] === 'manga' ? 'manga' : 'anime'} to view its details:`,
-            components: [
-                buildSavedMediaMenu('mytracked_select', items, 'Choose a tracked item'),
-                buildResetButton('tracked')
-            ]
-        });
-    }
 
+        if (interaction.customId === 'mytracked_select') {
+            const trackedItem = await TrackedItem.findOne({
+                _id: interaction.values[0],
+                guildId: interaction.guildId
+            }).lean();
+            if (!trackedItem) {
+                return interaction.update({ content: '❌ That tracked item is no longer available.', components: [] });
+            }
+            return interaction.update({
+                content: `🎯 **${trackedItem.animeTitle}**\nType: **${trackedItem.mediaType === 'manga' ? 'Manga' : 'Anime'}**\nAlerts: <#${trackedItem.channelId}>`,
+                components: []
+            });
+        }
+
+        if (interaction.customId === 'mytracked_type_select') {
+            const items = await TrackedItem.find({
+                guildId: interaction.guildId,
+                mediaType: interaction.values[0]
+            }).lean();
+            if (!items.length) {
+                return interaction.update({
+                    content: '❌ There are no tracked items of that type.',
+                    components: []
+                });
+            }
+            return interaction.update({
+                content: `📌 Choose a tracked ${interaction.values[0] === 'manga' ? 'manga' : 'anime'} to view its details:`,
+                components: [
+                    buildSavedMediaMenu('mytracked_select', items, 'Choose a tracked item'),
+                    buildResetButton('tracked')
+                ]
+            });
+        }
+    } // 👈 Closes string select menu check
+}); // 👈 Closes interactionCreate listener
     // 1. معالجة زر Timezone
 if (interaction.customId === 'settings_timezone') {
     const modal = new ModalBuilder()
