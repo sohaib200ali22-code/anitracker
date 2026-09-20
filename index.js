@@ -1259,7 +1259,7 @@ client.on('interactionCreate', async (interaction) => {
             });
         }
     } // 👈 Closes string select menu check
-    
+
     // 1. معالجة زر Timezone
 if (interaction.customId === 'settings_timezone') {
     const modal = new ModalBuilder()
@@ -4142,8 +4142,7 @@ else if (commandName === 'mytracked') {
             content: `❌ **\`checkUpdates()\` failed after ${executionTime}s!**\n\`\`\`javascript\n${err.message || err}\n\`\`\`\nCheck the console logs for full stack trace.`
         });
     }
-
-});
+    
 // 🔄 Automated Episode Checker Function
 async function runUpdateChecks() {
     try {
