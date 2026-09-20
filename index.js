@@ -1427,7 +1427,7 @@ if (interaction.customId === 'settings_notifications_menu') {
             });
         }
 
-// 3. Render AniList Data
+        // 3. Render AniList Data
         try {
             const media = mediaList[Math.floor(Math.random() * mediaList.length)];
             const title = (media.title && (media.title.english || media.title.romaji)) || `${mediaType} title`;
@@ -1468,6 +1468,15 @@ if (interaction.customId === 'settings_notifications_menu') {
             });
         }
 
+        if (interaction.customId === 'setup_alert_channel_select') {
+            if (!canRunServerSetup(interaction)) {
+                return interaction.update({
+                    content: '❌ Only the server owner, an administrator, or the bot owner can finish AniTracker setup.',
+                    components: []
+                });
+            }
+        }
+
         const channelId = interaction.values[0];
         await ServerSettings.findOneAndUpdate(
             { guildId: interaction.guildId },
@@ -1484,17 +1493,6 @@ if (interaction.customId === 'settings_notifications_menu') {
             components: []
         });
     }
-
-    if (interaction.isChannelSelectMenu() && interaction.customId === 'setup_alert_channel_select') {
-        if (!interaction.guildId || !canRunServerSetup(interaction)) {
-            return interaction.update({
-                content: '❌ Only the server owner, an administrator, or the bot owner can finish AniTracker setup.',
-                components: []
-            });
-        }
-    }
-
-
     const requiredPermissions = [
         PermissionFlagsBits.ViewChannel,
         PermissionFlagsBits.SendMessages,
