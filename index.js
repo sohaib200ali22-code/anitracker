@@ -72,7 +72,7 @@ async function fetchMangaDexSearch(search) {
         },
         timeout: 10000
     });
-    const item = response.data?.data[0];
+    const item = response.data?data[0];
     if (!item) return null;
 
     const attributes = item.attributes || {};
