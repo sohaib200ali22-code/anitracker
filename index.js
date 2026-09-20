@@ -1297,8 +1297,7 @@ const channelMenu = new ChannelSelectMenuBuilder()
             components: [new ActionRowBuilder().addComponents(channelMenu)]
         });
     }
-
-    if (interaction.customId === 'settings_notifications_menu') {
+if (interaction.customId === 'settings_notifications_menu') {
         return interaction.update({
             content: '🔔 Choose which notification type to change:',
             components: buildNotificationButtons()
@@ -1313,6 +1312,7 @@ const channelMenu = new ChannelSelectMenuBuilder()
             components: [buildGenreMenu(mediaType, status === 'all' ? null : status)]
         });
     }
+
     if (interaction.customId.startsWith('genre_select_')) {
         const [, , mediaType, statusValue = 'all'] = interaction.customId.split('_');
         const genreChoice = interaction.values[0];
@@ -1328,7 +1328,8 @@ const channelMenu = new ChannelSelectMenuBuilder()
         if (genreDefinition.adultOnly) {
             let isVerified = false;
             try {
-                isVerified = Boolean(await AgeVerification.exists({ userId: interaction.user.id }));
+                const check = await AgeVerification.exists({ userId: interaction.user.id });
+                isVerified = Boolean(check);
             } catch (err) {
                 console.error('age verification lookup error:', err);
                 return interaction.update({
@@ -1343,12 +1344,8 @@ const channelMenu = new ChannelSelectMenuBuilder()
                     components: []
                 });
             }
-
         }
-}
-        await interaction.deferUpdate();
-
-        const gqlQuery = `
+    }        const gqlQuery = `
         query ($type: MediaType, $genre: String, $tag: String, $status: MediaStatus) {
           Page (page: 1, perPage: 10) {
             media (type: $type, genre: $genre, tag: $tag, status: $status, sort: SCORE_DESC) {
