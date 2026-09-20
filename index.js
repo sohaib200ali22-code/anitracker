@@ -4340,7 +4340,7 @@ async function runUpdateChecks() {
     } catch (err) {
         console.error('Error in checkUpdates main loop:', err);
     }
-} // 👈 Closes the checkUpdates() function!
+}
 
 // Catch errors for interaction handler
 process.on('unhandledRejection', async (error) => {
