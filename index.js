@@ -4,7 +4,6 @@ const http = require('http');
 const mongoose = require('mongoose');
 require('dotenv').config();
 const { getAnimeJikan, getMangaJikan, getCharacterJikan } = require('./jikanFallback');
-
 // Web server workaround to keep Render alive 24/7
 http.createServer((req, res) => {
     res.write("AniTracker is running!");
@@ -12,14 +11,9 @@ http.createServer((req, res) => {
 }).listen(process.env.PORT || 3000);
 
 // Connect to MongoDB
-(async () => {
-    try {
-        await mongoose.connect(process.env.MONGODB_URI);
-        console.log('Connected to MongoDB Atlas!');
-    } catch (err) {
-        console.error('MongoDB connection error:', err);
-    }
-})();
+mongoose.connect(process.env.MONGODB_URI)
+    .then(() => console.log('Connected to MongoDB Atlas!'))
+    .catch(err => console.error('MongoDB connection error:', err));
 
 // MongoDB Schema for Server Tracked Items
 const TrackSchema = new mongoose.Schema({
@@ -49,7 +43,6 @@ FavoriteSchema.index({ userId: 1, animeId: 1 });
 FavoriteSchema.index({ userId: 1, mediaType: 1 });
 const FavoriteItem = mongoose.model('FavoriteItem', FavoriteSchema);
 
-// MongoDB Schema for User Reports
 const ReportSchema = new mongoose.Schema({
     userId: String,
     messageHash: String,
@@ -79,7 +72,7 @@ async function fetchMangaDexSearch(search) {
         },
         timeout: 10000
     });
-    const item = response.data?.data[0];
+    const item = response.data?.data?.[0];
     if (!item) return null;
 
     const attributes = item.attributes || {};
@@ -106,6 +99,7 @@ async function fetchMangaDexSearch(search) {
         source: 'mangadex'
     };
 }
+
 async function fetchMangaDexLatestChapter(mangaId) {
     const response = await axios.get('https://api.mangadex.org/chapter', {
         params: {
@@ -243,25 +237,28 @@ function buildGenreMenu(mediaType, status) {
 }
 
 function buildSettingsMenu() {
-    return new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-            .setCustomId('settings_timezone')
-            .setLabel('Timezone')
-            .setEmoji('🌐')
-            .setStyle(ButtonStyle.Primary),
+    const menu = new StringSelectMenuBuilder()
+        .setCustomId('settings_select')
+        .setPlaceholder('Choose a setting to change')
+        .addOptions(
+            {
+                label: 'Timezone',
+                value: 'timezone',
+                description: 'Set the timezone used for your schedule'
+            },
+            {
+                label: 'Alert Channel',
+                value: 'alert-channel',
+                description: 'Choose where server episode alerts are sent'
+            },
+            {
+                label: 'Notifications',
+                value: 'notifications',
+                description: 'Enable or disable DM and server alerts'
+            }
+        );
 
-        new ButtonBuilder()
-            .setCustomId('settings_alert_channel')
-            .setLabel('Alert Channel')
-            .setEmoji('📢')
-            .setStyle(ButtonStyle.Secondary),
-
-        new ButtonBuilder()
-            .setCustomId('settings_notifications')
-            .setLabel('Notifications')
-            .setEmoji('🔔')
-            .setStyle(ButtonStyle.Secondary)
-    );
+    return new ActionRowBuilder().addComponents(menu);
 }
 
 function buildNotificationButtons() {
@@ -299,6 +296,7 @@ function buildSetupChannelMenu() {
 
     return new ActionRowBuilder().addComponents(menu);
 }
+
 function buildSavedMediaMenu(customId, items, placeholder) {
     const menu = new StringSelectMenuBuilder()
         .setCustomId(customId)
@@ -551,253 +549,53 @@ function isValidTimezone(timezone) {
 }
 
 const CITY_TIMEZONES = new Map([
-    // --- North Africa ---
     ['cairo', 'Africa/Cairo'],
     ['alexandria', 'Africa/Cairo'],
-    ['giza', 'Africa/Cairo'],
-    ['port said', 'Africa/Cairo'],
-    ['suez', 'Africa/Cairo'],
-    ['luxor', 'Africa/Cairo'],
-    ['aswan', 'Africa/Cairo'],
     ['casablanca', 'Africa/Casablanca'],
-    ['rabat', 'Africa/Casablanca'],
-    ['marrakesh', 'Africa/Casablanca'],
-    ['tangier', 'Africa/Casablanca'],
-    ['tunis', 'Africa/Tunis'],
-    ['sfax', 'Africa/Tunis'],
-    ['algiers', 'Africa/Algiers'],
-    ['oran', 'Africa/Algiers'],
-    ['tripoli', 'Africa/Tripoli'],
-    ['benghazi', 'Africa/Tripoli'],
-    ['khartoum', 'Africa/Khartoum'],
-
-    // --- Middle East & Gulf ---
+    ['lagos', 'Africa/Lagos'],
+    ['johannesburg', 'Africa/Johannesburg'],
+    ['nairobi', 'Africa/Nairobi'],
+    ['london', 'Europe/London'],
+    ['paris', 'Europe/Paris'],
+    ['berlin', 'Europe/Berlin'],
+    ['rome', 'Europe/Rome'],
+    ['madrid', 'Europe/Madrid'],
+    ['istanbul', 'Europe/Istanbul'],
+    ['moscow', 'Europe/Moscow'],
     ['riyadh', 'Asia/Riyadh'],
-    ['jeddah', 'Asia/Riyadh'],
-    ['mecca', 'Asia/Riyadh'],
-    ['medina', 'Asia/Riyadh'],
-    ['dammam', 'Asia/Riyadh'],
-    ['khobar', 'Asia/Riyadh'],
     ['dubai', 'Asia/Dubai'],
     ['abu dhabi', 'Asia/Dubai'],
-    ['sharjah', 'Asia/Dubai'],
     ['doha', 'Asia/Qatar'],
     ['kuwait city', 'Asia/Kuwait'],
-    ['kuwait', 'Asia/Kuwait'],
-    ['manama', 'Asia/Bahrain'],
-    ['muscat', 'Asia/Muscat'],
-    ['salalah', 'Asia/Muscat'],
     ['baghdad', 'Asia/Baghdad'],
-    ['basra', 'Asia/Baghdad'],
-    ['erbil', 'Asia/Baghdad'],
-    ['amman', 'Asia/Amman'],
-    ['zarqa', 'Asia/Amman'],
-    ['beirut', 'Asia/Beirut'],
-    ['damascus', 'Asia/Damascus'],
-    ['aleppo', 'Asia/Damascus'],
-    ['jerusalem', 'Asia/Jerusalem'],
-    ['gaza', 'Asia/Gaza'],
-    ['sanaa', 'Asia/Aden'],
-    ['aden', 'Asia/Aden'],
     ['tehran', 'Asia/Tehran'],
-    ['isfahan', 'Asia/Tehran'],
-    ['mashhad', 'Asia/Tehran'],
-    ['baku', 'Asia/Baku'],
-    ['yerevan', 'Asia/Yerevan'],
-    ['tbilisi', 'Asia/Tbilisi'],
-
-    // --- Sub-Saharan Africa ---
-    ['lagos', 'Africa/Lagos'],
-    ['abuja', 'Africa/Lagos'],
-    ['johannesburg', 'Africa/Johannesburg'],
-    ['cape town', 'Africa/Johannesburg'],
-    ['durban', 'Africa/Johannesburg'],
-    ['nairobi', 'Africa/Nairobi'],
-    ['accra', 'Africa/Accra'],
-    ['addis ababa', 'Africa/Addis_Ababa'],
-    ['dakar', 'Africa/Dakar'],
-    ['luanda', 'Africa/Luanda'],
-    ['dar es salaam', 'Africa/Dar_es_Salaam'],
-    ['kinshasa', 'Africa/Kinshasa'],
-    ['maputo', 'Africa/Maputo'],
-    ['kampala', 'Africa/Kampala'],
-    ['harare', 'Africa/Harare'],
-    ['lusaka', 'Africa/Lusaka'],
-    ['kigali', 'Africa/Kigali'],
-    ['antananarivo', 'Africa/Antananarivo'],
-    ['abidjan', 'Africa/Abidjan'],
-
-    // --- Europe ---
-    ['london', 'Europe/London'],
-    ['manchester', 'Europe/London'],
-    ['birmingham', 'Europe/London'],
-    ['dublin', 'Europe/Dublin'],
-    ['paris', 'Europe/Paris'],
-    ['lyon', 'Europe/Paris'],
-    ['marseille', 'Europe/Paris'],
-    ['berlin', 'Europe/Berlin'],
-    ['frankfurt', 'Europe/Berlin'],
-    ['munich', 'Europe/Berlin'],
-    ['hamburg', 'Europe/Berlin'],
-    ['rome', 'Europe/Rome'],
-    ['milan', 'Europe/Rome'],
-    ['madrid', 'Europe/Madrid'],
-    ['barcelona', 'Europe/Madrid'],
-    ['valencia', 'Europe/Madrid'],
-    ['amsterdam', 'Europe/Amsterdam'],
-    ['rotterdam', 'Europe/Amsterdam'],
-    ['brussels', 'Europe/Brussels'],
-    ['vienna', 'Europe/Vienna'],
-    ['zurich', 'Europe/Zurich'],
-    ['geneva', 'Europe/Zurich'],
-    ['athens', 'Europe/Athens'],
-    ['istanbul', 'Europe/Istanbul'],
-    ['ankara', 'Europe/Istanbul'],
-    ['izmir', 'Europe/Istanbul'],
-    ['moscow', 'Europe/Moscow'],
-    ['saint petersburg', 'Europe/Moscow'],
-    ['kyiv', 'Europe/Kyiv'],
-    ['kiev', 'Europe/Kyiv'],
-    ['warsaw', 'Europe/Warsaw'],
-    ['prague', 'Europe/Prague'],
-    ['budapest', 'Europe/Budapest'],
-    ['bucharest', 'Europe/Bucharest'],
-    ['stockholm', 'Europe/Stockholm'],
-    ['oslo', 'Europe/Oslo'],
-    ['copenhagen', 'Europe/Copenhagen'],
-    ['helsinki', 'Europe/Helsinki'],
-    ['lisbon', 'Europe/Lisbon'],
-    ['belgrade', 'Europe/Belgrade'],
-    ['zagreb', 'Europe/Zagreb'],
-    ['sofia', 'Europe/Sofia'],
-    ['bratislava', 'Europe/Bratislava'],
-    ['vilnius', 'Europe/Vilnius'],
-    ['riga', 'Europe/Riga'],
-    ['tallinn', 'Europe/Tallinn'],
-    ['reykjavik', 'Atlantic/Reykjavik'],
-
-    // --- South, Central & North Asia ---
     ['karachi', 'Asia/Karachi'],
-    ['lahore', 'Asia/Karachi'],
-    ['islamabad', 'Asia/Karachi'],
     ['mumbai', 'Asia/Kolkata'],
     ['delhi', 'Asia/Kolkata'],
     ['new delhi', 'Asia/Kolkata'],
-    ['bangalore', 'Asia/Kolkata'],
-    ['hyderabad', 'Asia/Kolkata'],
-    ['chennai', 'Asia/Kolkata'],
-    ['kolkata', 'Asia/Kolkata'],
     ['dhaka', 'Asia/Dhaka'],
-    ['colombo', 'Asia/Colombo'],
-    ['kathmandu', 'Asia/Kathmandu'],
-    ['tashkent', 'Asia/Tashkent'],
-    ['almaty', 'Asia/Almaty'],
-    ['astana', 'Asia/Almaty'],
-    ['bishkek', 'Asia/Bishkek'],
-    ['dushanbe', 'Asia/Dushanbe'],
-    ['ashgabat', 'Asia/Ashgabat'],
-    ['kabul', 'Asia/Kabul'],
-    ['ulaanbaatar', 'Asia/Ulaanbaatar'],
-    ['novosibirsk', 'Asia/Novosibirsk'],
-    ['yekaterinburg', 'Asia/Yekaterinburg'],
-    ['vladivostok', 'Asia/Vladivostok'],
-
-    // --- East & Southeast Asia ---
     ['bangkok', 'Asia/Bangkok'],
-    ['jakarta', 'Asia/Jakarta'],
-    ['surabaya', 'Asia/Jakarta'],
     ['singapore', 'Asia/Singapore'],
-    ['kuala lumpur', 'Asia/Kuala_Lumpur'],
-    ['manila', 'Asia/Manila'],
-    ['hanoi', 'Asia/Bangkok'],
-    ['ho chi minh', 'Asia/Ho_Chi_Minh'],
     ['beijing', 'Asia/Shanghai'],
     ['shanghai', 'Asia/Shanghai'],
-    ['shenzhen', 'Asia/Shanghai'],
-    ['guangzhou', 'Asia/Shanghai'],
-    ['hong kong', 'Asia/Hong_Kong'],
-    ['taipei', 'Asia/Taipei'],
     ['tokyo', 'Asia/Tokyo'],
-    ['osaka', 'Asia/Tokyo'],
-    ['kyoto', 'Asia/Tokyo'],
     ['seoul', 'Asia/Seoul'],
-    ['busan', 'Asia/Seoul'],
-    ['pyongyang', 'Asia/Pyongyang'],
-    ['phnom penh', 'Asia/Phnom_Penh'],
-    ['vientiane', 'Asia/Vientiane'],
-    ['yangon', 'Asia/Yangon'],
-
-    // --- Oceania & Pacific ---
     ['sydney', 'Australia/Sydney'],
     ['melbourne', 'Australia/Melbourne'],
-    ['brisbane', 'Australia/Brisbane'],
-    ['perth', 'Australia/Perth'],
-    ['adelaide', 'Australia/Adelaide'],
-    ['darwin', 'Australia/Darwin'],
-    ['hobart', 'Australia/Hobart'],
     ['auckland', 'Pacific/Auckland'],
-    ['wellington', 'Pacific/Auckland'],
-    ['suva', 'Pacific/Fiji'],
-    ['port moresby', 'Pacific/Port_Moresby'],
-    ['honolulu', 'Pacific/Honolulu'],
-    ['pago pago', 'Pacific/Pago_Pago'],
-    ['guam', 'Pacific/Guam'],
-
-    // --- North America ---
     ['new york', 'America/New_York'],
     ['washington', 'America/New_York'],
-    ['boston', 'America/New_York'],
-    ['miami', 'America/New_York'],
-    ['atlanta', 'America/New_York'],
-    ['philadelphia', 'America/New_York'],
     ['chicago', 'America/Chicago'],
-    ['houston', 'America/Chicago'],
-    ['dallas', 'America/Chicago'],
-    ['minneapolis', 'America/Chicago'],
     ['denver', 'America/Denver'],
-    ['salt lake city', 'America/Denver'],
-    ['phoenix', 'America/Phoenix'],
     ['los angeles', 'America/Los_Angeles'],
     ['san francisco', 'America/Los_Angeles'],
-    ['seattle', 'America/Los_Angeles'],
-    ['las vegas', 'America/Los_Angeles'],
-    ['anchorage', 'America/Anchorage'],
     ['toronto', 'America/Toronto'],
     ['vancouver', 'America/Vancouver'],
-    ['montreal', 'America/Toronto'],
-    ['calgary', 'America/Edmonton'],
-    ['winnipeg', 'America/Winnipeg'],
-    ['halifax', 'America/Halifax'],
     ['mexico city', 'America/Mexico_City'],
-    ['guadalajara', 'America/Mexico_City'],
-    ['monterrey', 'America/Monterrey'],
-    ['cancun', 'America/Cancun'],
-    ['tijuana', 'America/Tijuana'],
-
-    // --- Central America & Caribbean ---
-    ['havana', 'America/Havana'],
-    ['san juan', 'America/Puerto_Rico'],
-    ['kingston', 'America/Jamaica'],
-    ['santo domingo', 'America/Santo_Domingo'],
-    ['panama city', 'America/Panama'],
-    ['san jose', 'America/Costa_Rica'],
-    ['guatemala city', 'America/Guatemala'],
-
-    // --- South America ---
     ['sao paulo', 'America/Sao_Paulo'],
-    ['rio de janeiro', 'America/Sao_Paulo'],
-    ['brasilia', 'America/Sao_Paulo'],
-    ['buenos aires', 'America/Argentina/Buenos_Aires'],
-    ['mendoza', 'America/Argentina/Mendoza'],
-    ['santiago', 'America/Santiago'],
-    ['bogota', 'America/Bogota'],
-    ['lima', 'America/Lima'],
-    ['caracas', 'America/Caracas'],
-    ['quito', 'America/Guayaquil'],
-    ['la paz', 'America/La_Paz'],
-    ['asuncion', 'America/Asuncion'],
-    ['montevideo', 'America/Montevideo']
+    ['buenos aires', 'America/Argentina/Buenos_Aires']
 ]);
+
 function resolveTimezone(input) {
     const normalized = input.trim().toLowerCase().replace(/\s+/g, ' ');
     return CITY_TIMEZONES.get(normalized) || input.trim();
@@ -977,26 +775,6 @@ const allCommands = [
             .setRequired(true)
     ),
     new SlashCommandBuilder()
-    .setName('setstatus')
-    .setDescription('تغيير حالة البوت والفقاعة النصية')
-    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-    .addStringOption(option =>
-        option.setName('status')
-            .setDescription('choose')
-            .setRequired(true)
-            .addChoices(
-                { name: '🟢 متصل (Online)', value: 'online' },
-                { name: '🟡 خامل (Idle)', value: 'idle' },
-                { name: '🔴 عدم الإزعاج (DND)', value: 'dnd' },
-                { name: '⚪ مخفي (Invisible)', value: 'invisible' }
-            )
-    )
-    .addStringOption(option =>
-        option.setName('text')
-            .setDescription('write what will appear in the status')
-            .setRequired(false)
-    ),    
-    new SlashCommandBuilder()
     .setName('getinvite')
     .setDescription('(Dev only) Generate an invite link for a server')
     .addStringOption(option =>
@@ -1013,7 +791,7 @@ const allCommands = [
                 .setRequired(true)
         ),
         new SlashCommandBuilder()
-    .setName('bot-activity')
+    .setName('bot-status')
     .setDescription('(Dev only) Change the bot status or activity')
     .addStringOption(option =>
         option.setName('activity')
@@ -1097,14 +875,13 @@ client.once('clientReady', async () => {
     console.log(`Logged in as ${client.user.tag}!`);
 
     client.user.setPresence({
-    activities: [{
-        name: 'custom', // اسم داخلي فقط
-        type: ActivityType.Custom,
-        state: '/help  -  /start' // النص الذي سيظهر داخل الفقاعة
-    }],
-    status: 'dnd'
-});
-
+        activities: [{
+            name: '/help - anitracker.com',
+            type: ActivityType.Custom,
+            state: '/help  -  /start' // Text displayed in the bubble
+        }],
+        status: 'dnd'
+    });
 
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
     try {
@@ -1148,7 +925,7 @@ client.on('guildCreate', async guild => {
     const addBotButton = new ButtonBuilder()
         .setLabel('➕ Add AniTracker')
         .setStyle(ButtonStyle.Link)
-        .setURL(`https://discord.com/oauth2/authorize?client_id=1544261218124955708&permissions=268553216&integration_type=0&scope=bot+applications.commands`);
+        .setURL(`https://discord.com/oauth2/authorize?client_id=${guild.client.user.id}&scope=bot%20applications.commands&permissions=0`);
     const channel = guild.systemChannel
         || guild.channels.cache.find(candidate =>
             candidate.isTextBased() && candidate.permissionsFor(guild.members.me)?.has(PermissionFlagsBits.SendMessages)
@@ -1164,149 +941,141 @@ client.on('guildCreate', async guild => {
     }
 });
 
-client.on('interactionCreate', async (interaction) => {
-    updateChecker = runUpdateChecks;
+client.on('interactionCreate', interaction => {
+    Promise.resolve().then(async () => {
+   updateChecker = runUpdateChecks;
+   // 🎲 Genre recommendation menus & 🔘 Handle Interactive Buttons
+if (interaction.isStringSelectMenu()) {
+   if (interaction.customId === 'remove_saved_type_select') {
+       const mediaType = interaction.values[0];
+       const label = mediaType === 'manga' ? 'manga' : 'anime';
+       const count = await FavoriteItem.countDocuments({
+           userId: interaction.user.id,
+           mediaType
+       });
+       if (!count) {
+           return interaction.update({
+               content: `❌ You have no saved ${label} DM alerts to remove.`,
+               components: []
+           });
+       }
+       return interaction.update({
+           content: `⚠️ This will remove all **${count}** saved ${label} DM alerts. Tracked server items will not be changed.\n\nAre you sure you want to continue?`,
+           components: [buildRemoveSavedConfirmation(mediaType, 1)]
+       });
+   }
 
-    // 🎲 Genre recommendation menus & 🔘 Handle Interactive Buttons
-    if (interaction.isStringSelectMenu()) {
-        if (interaction.customId === 'remove_saved_type_select') {
-            const mediaType = interaction.values[0];
-            const label = mediaType === 'manga' ? 'manga' : 'anime';
-            const count = await FavoriteItem.countDocuments({
-                userId: interaction.user.id,
-                mediaType
-            });
+   if (interaction.customId === 'myfavorites_type_select') {
+       const favorites = await FavoriteItem.find({
+           userId: interaction.user.id,
+           mediaType: interaction.values[0]
+       }).lean();
+       if (!favorites.length) {
+           return interaction.update({
+               content: '❌ There are no saved items of that type.',
+               components: []
+           });
+       }
+       return interaction.update({
+           content: `⭐ Choose a saved ${interaction.values[0] === 'manga' ? 'manga' : 'anime'} to view its details:`,
+           components: [
+               buildSavedMediaMenu('myfavorites_select', favorites, 'Choose a saved item'),
+               buildResetButton('favorites')
+           ]
+       });
+   }
 
-            if (!count) {
-                return interaction.update({
-                    content: `❌ You have no saved ${label} DM alerts to remove.`,
-                    components: []
-                });
-
-
-            return interaction.update({
-                content: `⚠️ This will remove all **${count}** saved ${label} DM alerts. Tracked server items will not be changed.\n\nAre you sure you want to continue?`,
-                components: [buildRemoveSavedConfirmation(mediaType, 1)]
-            });
-       } 
-    
-
-        if (interaction.customId === 'myfavorites_type_select') {
-            const favorites = await FavoriteItem.find({
-                userId: interaction.user.id,
-                mediaType: interaction.values[0]
-            }).lean();
-            if (!favorites.length) {
-                return interaction.update({
-                    content: '❌ There are no saved items of that type.',
-                    components: []
-                });
-            }
-            return interaction.update({
-                content: `⭐ Choose a saved ${interaction.values[0] === 'manga' ? 'manga' : 'anime'} to view its details:`,
-                components: [
-                    buildSavedMediaMenu('myfavorites_select', favorites, 'Choose a saved item'),
-                    buildResetButton('favorites')
-                ]
-            });
-        } // 👈 Added missing brace here
-
-        if (interaction.customId === 'myfavorites_select') {
-            const favorite = await FavoriteItem.findOne({
-                _id: interaction.values[0],
-                userId: interaction.user.id
-            }).lean();
-            if (!favorite) {
-                return interaction.update({ content: '❌ That saved item is no longer available.', components: [] });
-            }
-            return interaction.update({
-                content: `⭐ **${favorite.animeTitle}**\nType: **${favorite.mediaType === 'manga' ? 'Manga' : 'Anime'}**\nUse \`/unfavorite ${favorite.animeTitle}\` to remove it.`,
-                components: []
-            });
+   if (interaction.customId === 'myfavorites_select') {
+        const favorite = await FavoriteItem.findOne({
+            _id: interaction.values[0],
+            userId: interaction.user.id
+        }).lean();
+        if (!favorite) {
+            return interaction.update({ content: '❌ That saved item is no longer available.', components: [] });
         }
-
-        if (interaction.customId === 'mytracked_select') {
-            const trackedItem = await TrackedItem.findOne({
-                _id: interaction.values[0],
-                guildId: interaction.guildId
-            }).lean();
-            if (!trackedItem) {
-                return interaction.update({ content: '❌ That tracked item is no longer available.', components: [] });
-            }
-            return interaction.update({
-                content: `🎯 **${trackedItem.animeTitle}**\nType: **${trackedItem.mediaType === 'manga' ? 'Manga' : 'Anime'}**\nAlerts: <#${trackedItem.channelId}>`,
-                components: []
-            });
-        }
-
-        if (interaction.customId === 'mytracked_type_select') {
-            const items = await TrackedItem.find({
-                guildId: interaction.guildId,
-                mediaType: interaction.values[0]
-            }).lean();
-            if (!items.length) {
-                return interaction.update({
-                    content: '❌ There are no tracked items of that type.',
-                    components: []
-                });
-            }
-            return interaction.update({
-                content: `📌 Choose a tracked ${interaction.values[0] === 'manga' ? 'manga' : 'anime'} to view its details:`,
-                components: [
-                    buildSavedMediaMenu('mytracked_select', items, 'Choose a tracked item'),
-                    buildResetButton('tracked')
-                ]
-            });
-        }
-    } // 👈 Closes string select menu check
-
-    // 1. معالجة زر Timezone
-if (interaction.customId === 'settings_timezone') {
-    const modal = new ModalBuilder()
-        .setCustomId('settings_timezone_modal')
-        .setTitle('Set Your Timezone');
-
-    const timezoneInput = new TextInputBuilder()
-        .setCustomId('timezone')
-        .setLabel('City or IANA timezone')
-        .setPlaceholder('Cairo, Dubai, New York, or Africa/Cairo')
-        .setStyle(TextInputStyle.Short)
-        .setRequired(true);
-
-    modal.addComponents(new ActionRowBuilder().addComponents(timezoneInput));
-    return interaction.showModal(modal);
-}
-
-// 2. معالجة زر Alert Channel
-if (interaction.customId === 'settings_alert_channel') {
-    if (!interaction.guildId) {
         return interaction.update({
-            content: '❌ Alert channel settings can only be changed inside a server.',
+            content: `⭐ **${favorite.animeTitle}**\nType: **${favorite.mediaType === 'manga' ? 'Manga' : 'Anime'}**\nUse \`/unfavorite ${favorite.animeTitle}\` to remove it.`,
             components: []
         });
     }
 
-    if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageChannels)) {
+    if (interaction.customId === 'mytracked_select') {
+        const trackedItem = await TrackedItem.findOne({
+            _id: interaction.values[0],
+            guildId: interaction.guildId
+        }).lean();
+        if (!trackedItem) {
+            return interaction.update({ content: '❌ That tracked item is no longer available.', components: [] });
+        }
         return interaction.update({
-            content: '❌ You need **Manage Channels** permission to change the server alert channel.',
+            content: `🎯 **${trackedItem.animeTitle}**\nType: **${trackedItem.mediaType === 'manga' ? 'Manga' : 'Anime'}**\nAlerts: <#${trackedItem.channelId}>`,
             components: []
         });
+    }
 
-
-    // قم بوضع باقي كود اختيار القناة هنا...
-const channelMenu = new ChannelSelectMenuBuilder()
-            .setCustomId('settings_alert_channel_select')
-            .setPlaceholder('Choose the alert channel')
-            .addChannelTypes(ChannelType.GuildText)
-            .setMinValues(1)
-            .setMaxValues(1);
-
+    if (interaction.customId === 'mytracked_type_select') {
+        const items = await TrackedItem.find({
+            guildId: interaction.guildId,
+            mediaType: interaction.values[0]
+        }).lean();
+        if (!items.length) {
+            return interaction.update({
+                content: '❌ There are no tracked items of that type.',
+                components: []
+            });
+        }
         return interaction.update({
-            content: '📢 Choose the server channel for tracked anime alerts:',
-            components: [new ActionRowBuilder().addComponents(channelMenu)]
+            content: `📌 Choose a tracked ${interaction.values[0] === 'manga' ? 'manga' : 'anime'} to view its details:`,
+            components: [
+                buildSavedMediaMenu('mytracked_select', items, 'Choose a tracked item'),
+                buildResetButton('tracked')
+            ]
         });
     }
-if (interaction.customId === 'settings_notifications_menu') {
+
+    if (interaction.customId === 'settings_select') {
+        const setting = interaction.values[0];
+
+        if (setting === 'timezone') {
+            const modal = new ModalBuilder()
+                .setCustomId('settings_timezone_modal')
+                .setTitle('Set Your Timezone');
+            const timezoneInput = new TextInputBuilder()
+                .setCustomId('timezone')
+                .setLabel('City or IANA timezone')
+                .setPlaceholder('Cairo, Dubai, New York, or Africa/Cairo')
+                .setStyle(TextInputStyle.Short)
+                .setRequired(true);
+            modal.addComponents(new ActionRowBuilder().addComponents(timezoneInput));
+            return interaction.showModal(modal);
+        }
+
+        if (setting === 'alert-channel') {
+            if (!interaction.guildId) {
+                return interaction.update({
+                    content: '❌ Alert channel settings can only be changed inside a server.',
+                    components: []
+                });
+            }
+            if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageChannels)) {
+                return interaction.update({
+                    content: '❌ You need **Manage Channels** permission to change the server alert channel.',
+                    components: []
+                });
+            }
+
+            const channelMenu = new ChannelSelectMenuBuilder()
+                .setCustomId('settings_alert_channel_select')
+                .setPlaceholder('Choose the alert channel')
+                .addChannelTypes(ChannelType.GuildText)
+                .setMinValues(1)
+                .setMaxValues(1);
+            return interaction.update({
+                content: '📢 Choose the server channel for tracked anime alerts:',
+                components: [new ActionRowBuilder().addComponents(channelMenu)]
+            });
+        }
+
         return interaction.update({
             content: '🔔 Choose which notification type to change:',
             components: buildNotificationButtons()
@@ -1337,8 +1106,7 @@ if (interaction.customId === 'settings_notifications_menu') {
         if (genreDefinition.adultOnly) {
             let isVerified = false;
             try {
-                const check = await AgeVerification.exists({ userId: interaction.user.id });
-                isVerified = Boolean(check);
+                isVerified = Boolean(await AgeVerification.exists({ userId: interaction.user.id }));
             } catch (err) {
                 console.error('age verification lookup error:', err);
                 return interaction.update({
@@ -1353,6 +1121,7 @@ if (interaction.customId === 'settings_notifications_menu') {
                     components: []
                 });
             }
+
         }
 
         await interaction.deferUpdate();
@@ -1374,6 +1143,7 @@ if (interaction.customId === 'settings_notifications_menu') {
             }
           }
         }`;
+
         let mediaList = null;
 
         // 1. Try AniList First
@@ -1453,49 +1223,61 @@ if (interaction.customId === 'settings_notifications_menu') {
             const components = [];
             components.push(...buildMediaButtons(media, interaction, mediaType));
 
-            return await interaction.editReply({ content: '', embeds: [embed], components });
+            await interaction.editReply({ content: '', embeds: [embed], components });
         } catch (err) {
             console.error('genre recommendation error:', err);
-            return await interaction.editReply({
+            await interaction.editReply({
                 content: '❌ Failed to fetch this recommendation. Please try `/genre` again.',
                 components: []
             });
         }
     }
+    return;
+}
 
-    if (interaction.isChannelSelectMenu()) {
-        if (!interaction.guildId || !interaction.member) {
-            return interaction.update({
-                content: '❌ You need **Manage Guild** permissions.',
-                components: []
-            });
-        }
-
-        if (interaction.customId === 'setup_alert_channel_select') {
-            if (!canRunServerSetup(interaction)) {
-                return interaction.update({
-                    content: '❌ Only the server owner, an administrator, or the bot owner can finish AniTracker setup.',
-                    components: []
-                });
-            }
-        }
-
-        const channelId = interaction.values[0];
-        await ServerSettings.findOneAndUpdate(
-            { guildId: interaction.guildId },
-            { $set: { alertChannelId: channelId, serverAlertsEnabled: true } },
-            { upsert: true, new: true, setDefaultsOnInsert: true }
-        );
-        await TrackedItem.updateMany(
-            { guildId: interaction.guildId },
-            { $set: { channelId } }
-        );
-
+if (interaction.isChannelSelectMenu() && interaction.customId === 'settings_alert_channel_select') {
+    if (!interaction.guildId || !interaction.memberPermissions?.has(PermissionFlagsBits.ManageChannels)) {
         return interaction.update({
-            content: `✅ Server episode alerts will now be sent to <#${channelId}>.`,
+            content: '❌ You need **Manage Channels** permission to change the server alert channel.',
             components: []
         });
     }
+
+    const channelId = interaction.values[0];
+    await ServerSettings.findOneAndUpdate(
+        { guildId: interaction.guildId },
+        { $set: { alertChannelId: channelId, serverAlertsEnabled: true } },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+    await TrackedItem.updateMany(
+        { guildId: interaction.guildId },
+        { $set: { channelId } }
+    );
+
+    return interaction.update({
+        content: `✅ Server episode alerts will now be sent to <#${channelId}>.`,
+        components: []
+    });
+}
+
+if (interaction.isChannelSelectMenu() && interaction.customId === 'setup_alert_channel_select') {
+    if (!interaction.guildId || !canRunServerSetup(interaction)) {
+        return interaction.update({
+            content: '❌ Only the server owner, an administrator, or the bot owner can finish AniTracker setup.',
+            components: []
+        });
+    }
+
+    const channelId = interaction.values[0];
+    const channel = await interaction.guild.channels.fetch(channelId).catch(() => null);
+    const botMember = await interaction.guild.members.fetch(client.user.id).catch(() => null);
+    if (!channel || !botMember) {
+        return interaction.update({
+            content: '❌ I could not verify the selected channel. Please run `/setup` again.',
+            components: []
+        });
+    }
+
     const requiredPermissions = [
         PermissionFlagsBits.ViewChannel,
         PermissionFlagsBits.SendMessages,
@@ -1526,28 +1308,29 @@ if (interaction.customId === 'settings_notifications_menu') {
         content: `✅ AniTracker setup is complete!\n\n📢 Tracking and episode alerts will use <#${channelId}>.\n\nYou can change this later with \`/settings\` → **Alert Channel**.`,
         components: []
     });
+}
 
-    if (interaction.isModalSubmit() && interaction.customId === 'timezone_modal') {
-        const input = interaction.fields.getTextInputValue('timezone').trim();
-        const timezone = resolveTimezone(input);
-        if (!isValidTimezone(timezone)) {
-            return interaction.reply({
-                content: '❌ I could not recognize that city. Try a city such as `Cairo`, `Dubai`, `London`, or `New York`, or enter an IANA timezone like `Africa/Cairo`.',
-                flags: MessageFlags.Ephemeral
-            });
-        }
-
-        await UserSettings.findOneAndUpdate(
-            { userId: interaction.user.id },
-            { $set: { timezone } },
-            { upsert: true, new: true, setDefaultsOnInsert: true }
-        );
-
+if (interaction.isModalSubmit() && interaction.customId === 'settings_timezone_modal') {
+    const input = interaction.fields.getTextInputValue('timezone').trim();
+    const timezone = resolveTimezone(input);
+    if (!isValidTimezone(timezone)) {
         return interaction.reply({
-            content: `✅ Your timezone is now set to \`${timezone}\`.`,
+            content: '❌ I could not recognize that city. Try a city such as `Cairo`, `Dubai`, `London`, or `New York`, or enter an IANA timezone like `Africa/Cairo`.',
             flags: MessageFlags.Ephemeral
         });
     }
+
+    await UserSettings.findOneAndUpdate(
+        { userId: interaction.user.id },
+        { $set: { timezone } },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+
+    return interaction.reply({
+        content: `✅ Your timezone is now set to \`${timezone}\`.`,
+        flags: MessageFlags.Ephemeral
+    });
+}
 
 if (interaction.isButton()) {
     if (interaction.customId.startsWith('remove_saved_cancel_')) {
@@ -2407,7 +2190,7 @@ else if (commandName === 'report') {
     } catch (err) {
         console.error('report command error:', err);
         return interaction.editReply({
-            content: '❌ I could not send your report right now. Please try again later or run `/help` to join our support server for further help.'
+            content: '❌ I could not send your report right now. Please try again later or contact the owner in the support server.'
         });
     }
 }
@@ -3484,7 +3267,6 @@ else if (commandName === 'servers') {
         await interaction.editReply('❌ Failed to fetch server list.');
     }
 }
-    
         // 🛠️ أمر الـ maintenance-dm
     else if (commandName === 'maintenance-dm') {
         if (!isOwner(interaction)) {
@@ -3578,30 +3360,21 @@ else if (commandName === 'servers') {
         const invite = await channel.createInvite({ maxAge: 3600, maxUses: 1 });
         await interaction.reply({ content: `🔗 **Invite Link for ${guild.name}:** ${invite.url}`, flags: 64 });
     }
+                else if (commandName === 'bot-status') {
+        if (!isOwner(interaction)) {
+            return interaction.reply({ content: '❌ Dev only command!', flags: 64 });
+        }
 
-    else if (commandName === 'setstatus') {
-    if (!isOwner(interaction)) {
-        return interaction.reply({ content: '❌ Dev only command!', flags: 64 });
+        const activity = interaction.options.getString('activity');
+        const type = parseInt(interaction.options.getString('type'));
+
+        interaction.client.user.setActivity(activity, { type: type });
+
+        await interaction.reply({
+            content: `✅ Bot activity updated to: **${activity}**`,
+            flags: 64
+        });
     }
-
-    const statusChoice = interaction.options.getString('status');
-    const textChoice = interaction.options.getString('text') || '';
-
-    await interaction.client.user.setPresence({
-        activities: textChoice ? [{
-            name: 'custom',
-            type: ActivityType.Custom,
-            state: textChoice
-        }] : [],
-        status: statusChoice
-    });
-
-    return interaction.reply({
-        content: `✅ Status updated to **${statusChoice}** ${textChoice ? `with bubble: "${textChoice}"` : ''}`,
-        flags: 64
-    });
-}
-
     // 📖 Manga Command
 else if (commandName === 'manga') {
     await interaction.deferReply();
@@ -4142,7 +3915,7 @@ else if (commandName === 'mytracked') {
             content: `❌ **\`checkUpdates()\` failed after ${executionTime}s!**\n\`\`\`javascript\n${err.message || err}\n\`\`\`\nCheck the console logs for full stack trace.`
         });
     }
-
+}
 // 🔄 Automated Episode Checker Function
 async function runUpdateChecks() {
     try {
@@ -4250,7 +4023,7 @@ async function runUpdateChecks() {
             await sleep(350); // Safe pacing for AniList Rate Limit
         }
 
-// 2. Check Personal Favorites (User DM Alerts)
+        // 2. Check Personal Favorites (User DM Alerts)
         const favorites = await FavoriteItem.find({});
 
         for (const item of favorites) {
@@ -4275,7 +4048,6 @@ async function runUpdateChecks() {
                     }
                     continue;
                 }
-
                 let anime;
                 if (item.source === 'kitsu' || String(item.animeId).startsWith('kitsu_')) {
                     anime = await fetchKitsuAnime(String(item.animeId).replace(/^kitsu_/, ''));
@@ -4329,11 +4101,13 @@ async function runUpdateChecks() {
                                 .setColor('#f1c40f')
                                 .setTimestamp();
 
+                            // Send DM (catch error if user closed DMs)
                             await user.send({ embeds: [embed] }).catch(() => {
                                 console.log(`Could not send DM to user ${item.userId} (DMs might be closed).`);
                             });
                         }
 
+                        // Always update database so it doesn't loop forever
                         item.lastEpisodes = currentEps;
                         await item.save();
                     }
@@ -4346,15 +4120,16 @@ async function runUpdateChecks() {
         }
     } catch (err) {
         console.error('Error in checkUpdates main loop:', err);
-    }
-}
-}
-}
+   }
 
-// Catch errors for interaction handler
-process.on('unhandledRejection', async (error) => {
-    console.error('Unhandled interaction error:', error);
+}
+    }).catch(async error => {
+        console.error('Unhandled interaction error:', error);
+        try {
+            if (interaction.isRepliable() && !interaction.replied && !interaction.deferred) await interaction.reply({ content: '? Something went wrong. Please try again later.', flags: MessageFlags.Ephemeral });
+            else if (interaction.isRepliable()) await interaction.followUp({ content: '? Something went wrong. Please try again later.', flags: MessageFlags.Ephemeral });
+        } catch (replyError) { console.error('Interaction error response failed:', replyError.message); }
+    });
 });
-
 // Log in to Discord
 client.login(process.env.DISCORD_TOKEN);
