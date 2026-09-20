@@ -1351,7 +1351,10 @@ if (interaction.customId === 'settings_notifications_menu') {
                 });
             }
         }
-    }        const gqlQuery = `
+
+        await interaction.deferUpdate();
+
+        const gqlQuery = `
         query ($type: MediaType, $genre: String, $tag: String, $status: MediaStatus) {
           Page (page: 1, perPage: 10) {
             media (type: $type, genre: $genre, tag: $tag, status: $status, sort: SCORE_DESC) {
@@ -1368,7 +1371,6 @@ if (interaction.customId === 'settings_notifications_menu') {
             }
           }
         }`;
-
         let mediaList = null;
 
         // 1. Try AniList First
