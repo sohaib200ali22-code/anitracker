@@ -588,7 +588,7 @@ const CITY_TIMEZONES = new Map([
     ['zarqa', 'Asia/Amman'],
     ['beirut', 'Asia/Beirut'],
     ['damascus', 'Asia/Damascus'],
-    ['aleph', 'Asia/Damascus'],
+    ['aleppo', 'Asia/Damascus'],
     ['jerusalem', 'Asia/Jerusalem'],
     ['gaza', 'Asia/Gaza'],
     ['sanaa', 'Asia/Aden'],
@@ -596,8 +596,11 @@ const CITY_TIMEZONES = new Map([
     ['tehran', 'Asia/Tehran'],
     ['isfahan', 'Asia/Tehran'],
     ['mashhad', 'Asia/Tehran'],
+    ['baku', 'Asia/Baku'],
+    ['yerevan', 'Asia/Yerevan'],
+    ['tbilisi', 'Asia/Tbilisi'],
 
-    // --- Rest of Africa ---
+    // --- Sub-Saharan Africa ---
     ['lagos', 'Africa/Lagos'],
     ['abuja', 'Africa/Lagos'],
     ['johannesburg', 'Africa/Johannesburg'],
@@ -609,6 +612,14 @@ const CITY_TIMEZONES = new Map([
     ['dakar', 'Africa/Dakar'],
     ['luanda', 'Africa/Luanda'],
     ['dar es salaam', 'Africa/Dar_es_Salaam'],
+    ['kinshasa', 'Africa/Kinshasa'],
+    ['maputo', 'Africa/Maputo'],
+    ['kampala', 'Africa/Kampala'],
+    ['harare', 'Africa/Harare'],
+    ['lusaka', 'Africa/Lusaka'],
+    ['kigali', 'Africa/Kigali'],
+    ['antananarivo', 'Africa/Antananarivo'],
+    ['abidjan', 'Africa/Abidjan'],
 
     // --- Europe ---
     ['london', 'Europe/London'],
@@ -650,8 +661,16 @@ const CITY_TIMEZONES = new Map([
     ['copenhagen', 'Europe/Copenhagen'],
     ['helsinki', 'Europe/Helsinki'],
     ['lisbon', 'Europe/Lisbon'],
+    ['belgrade', 'Europe/Belgrade'],
+    ['zagreb', 'Europe/Zagreb'],
+    ['sofia', 'Europe/Sofia'],
+    ['bratislava', 'Europe/Bratislava'],
+    ['vilnius', 'Europe/Vilnius'],
+    ['riga', 'Europe/Riga'],
+    ['tallinn', 'Europe/Tallinn'],
+    ['reykjavik', 'Atlantic/Reykjavik'],
 
-    // --- Asia & Pacific ---
+    // --- South, Central & North Asia ---
     ['karachi', 'Asia/Karachi'],
     ['lahore', 'Asia/Karachi'],
     ['islamabad', 'Asia/Karachi'],
@@ -667,6 +686,17 @@ const CITY_TIMEZONES = new Map([
     ['kathmandu', 'Asia/Kathmandu'],
     ['tashkent', 'Asia/Tashkent'],
     ['almaty', 'Asia/Almaty'],
+    ['astana', 'Asia/Almaty'],
+    ['bishkek', 'Asia/Bishkek'],
+    ['dushanbe', 'Asia/Dushanbe'],
+    ['ashgabat', 'Asia/Ashgabat'],
+    ['kabul', 'Asia/Kabul'],
+    ['ulaanbaatar', 'Asia/Ulaanbaatar'],
+    ['novosibirsk', 'Asia/Novosibirsk'],
+    ['yekaterinburg', 'Asia/Yekaterinburg'],
+    ['vladivostok', 'Asia/Vladivostok'],
+
+    // --- East & Southeast Asia ---
     ['bangkok', 'Asia/Bangkok'],
     ['jakarta', 'Asia/Jakarta'],
     ['surabaya', 'Asia/Jakarta'],
@@ -686,44 +716,81 @@ const CITY_TIMEZONES = new Map([
     ['kyoto', 'Asia/Tokyo'],
     ['seoul', 'Asia/Seoul'],
     ['busan', 'Asia/Seoul'],
+    ['pyongyang', 'Asia/Pyongyang'],
+    ['phnom penh', 'Asia/Phnom_Penh'],
+    ['vientiane', 'Asia/Vientiane'],
+    ['yangon', 'Asia/Yangon'],
+
+    // --- Oceania & Pacific ---
     ['sydney', 'Australia/Sydney'],
     ['melbourne', 'Australia/Melbourne'],
     ['brisbane', 'Australia/Brisbane'],
     ['perth', 'Australia/Perth'],
     ['adelaide', 'Australia/Adelaide'],
+    ['darwin', 'Australia/Darwin'],
+    ['hobart', 'Australia/Hobart'],
     ['auckland', 'Pacific/Auckland'],
     ['wellington', 'Pacific/Auckland'],
+    ['suva', 'Pacific/Fiji'],
+    ['port moresby', 'Pacific/Port_Moresby'],
+    ['honolulu', 'Pacific/Honolulu'],
+    ['pago pago', 'Pacific/Pago_Pago'],
+    ['guam', 'Pacific/Guam'],
 
-    // --- Americas ---
+    // --- North America ---
     ['new york', 'America/New_York'],
     ['washington', 'America/New_York'],
     ['boston', 'America/New_York'],
     ['miami', 'America/New_York'],
     ['atlanta', 'America/New_York'],
+    ['philadelphia', 'America/New_York'],
     ['chicago', 'America/Chicago'],
     ['houston', 'America/Chicago'],
     ['dallas', 'America/Chicago'],
+    ['minneapolis', 'America/Chicago'],
     ['denver', 'America/Denver'],
+    ['salt lake city', 'America/Denver'],
     ['phoenix', 'America/Phoenix'],
     ['los angeles', 'America/Los_Angeles'],
     ['san francisco', 'America/Los_Angeles'],
     ['seattle', 'America/Los_Angeles'],
     ['las vegas', 'America/Los_Angeles'],
     ['anchorage', 'America/Anchorage'],
-    ['honolulu', 'Pacific/Honolulu'],
     ['toronto', 'America/Toronto'],
     ['vancouver', 'America/Vancouver'],
     ['montreal', 'America/Toronto'],
     ['calgary', 'America/Edmonton'],
+    ['winnipeg', 'America/Winnipeg'],
+    ['halifax', 'America/Halifax'],
     ['mexico city', 'America/Mexico_City'],
     ['guadalajara', 'America/Mexico_City'],
+    ['monterrey', 'America/Monterrey'],
+    ['cancun', 'America/Cancun'],
+    ['tijuana', 'America/Tijuana'],
+
+    // --- Central America & Caribbean ---
+    ['havana', 'America/Havana'],
+    ['san juan', 'America/Puerto_Rico'],
+    ['kingston', 'America/Jamaica'],
+    ['santo domingo', 'America/Santo_Domingo'],
+    ['panama city', 'America/Panama'],
+    ['san jose', 'America/Costa_Rica'],
+    ['guatemala city', 'America/Guatemala'],
+
+    // --- South America ---
     ['sao paulo', 'America/Sao_Paulo'],
     ['rio de janeiro', 'America/Sao_Paulo'],
+    ['brasilia', 'America/Sao_Paulo'],
     ['buenos aires', 'America/Argentina/Buenos_Aires'],
+    ['mendoza', 'America/Argentina/Mendoza'],
     ['santiago', 'America/Santiago'],
     ['bogota', 'America/Bogota'],
     ['lima', 'America/Lima'],
-    ['caracas', 'America/Caracas']
+    ['caracas', 'America/Caracas'],
+    ['quito', 'America/Guayaquil'],
+    ['la paz', 'America/La_Paz'],
+    ['asuncion', 'America/Asuncion'],
+    ['montevideo', 'America/Montevideo']
 ]);
 function resolveTimezone(input) {
     const normalized = input.trim().toLowerCase().replace(/\s+/g, ' ');
@@ -916,12 +983,13 @@ const allCommands = [
                 { name: '🟡 خامل (Idle)', value: 'idle' },
                 { name: '🔴 عدم الإزعاج (DND)', value: 'dnd' },
                 { name: '⚪ مخفي (Invisible)', value: 'invisible' }
-            ))
+            )
+    )
     .addStringOption(option =>
         option.setName('text')
             .setDescription('اكتب النص الذي سيظهر داخل الفقاعة')
-            .setRequired(false)),
-    
+            .setRequired(false)
+    ),    
     new SlashCommandBuilder()
     .setName('getinvite')
     .setDescription('(Dev only) Generate an invite link for a server')
@@ -939,7 +1007,7 @@ const allCommands = [
                 .setRequired(true)
         ),
         new SlashCommandBuilder()
-    .setName('bot-status')
+    .setName('bot-activity')
     .setDescription('(Dev only) Change the bot status or activity')
     .addStringOption(option =>
         option.setName('activity')
@@ -1074,7 +1142,7 @@ client.on('guildCreate', async guild => {
     const addBotButton = new ButtonBuilder()
         .setLabel('➕ Add AniTracker')
         .setStyle(ButtonStyle.Link)
-        .setURL(`https://discord.com/oauth2/authorize?client_id=${guild.client.user.id}&scope=bot%20applications.commands&permissions=0`);
+        .setURL(`https://discord.com/oauth2/authorize?client_id=1544261218124955708&permissions=268553216&integration_type=0&scope=bot+applications.commands`);
     const channel = guild.systemChannel
         || guild.channels.cache.find(candidate =>
             candidate.isTextBased() && candidate.permissionsFor(guild.members.me)?.has(PermissionFlagsBits.SendMessages)
@@ -2332,7 +2400,7 @@ else if (commandName === 'report') {
     } catch (err) {
         console.error('report command error:', err);
         return interaction.editReply({
-            content: '❌ I could not send your report right now. Please try again later or contact the owner in the support server.'
+            content: '❌ I could not send your report right now. Please try again later or run `/help` to join our support server for further help.'
         });
     }
 }
@@ -3538,6 +3606,28 @@ else if (commandName === 'servers') {
             flags: 64
         });
     }
+                    else if (commandName === 'bot-status' || commandName === 'setstatus') {
+    if (!isOwner(interaction)) {
+        return interaction.reply({ content: '❌ Dev only command!', flags: 64 });
+    }
+
+    const statusChoice = interaction.options.getString('status'); // 'online', 'idle', 'dnd', 'invisible'
+    const activity = interaction.options.getString('text') || interaction.options.getString('activity');
+
+    if (statusChoice) {
+        await interaction.client.user.setStatus(statusChoice);
+    }
+
+    if (activity) {
+        const type = parseInt(interaction.options.getString('type')) || 0;
+        interaction.client.user.setActivity(activity, { type });
+    }
+
+    await interaction.reply({
+        content: '✅ Bot status/activity updated!',
+        flags: 64
+    });
+}
     // 📖 Manga Command
 else if (commandName === 'manga') {
     await interaction.deferReply();
