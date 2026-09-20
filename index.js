@@ -4142,7 +4142,7 @@ else if (commandName === 'mytracked') {
             content: `❌ **\`checkUpdates()\` failed after ${executionTime}s!**\n\`\`\`javascript\n${err.message || err}\n\`\`\`\nCheck the console logs for full stack trace.`
         });
     }
-    
+
 // 🔄 Automated Episode Checker Function
 async function runUpdateChecks() {
     try {
@@ -4348,7 +4348,7 @@ async function runUpdateChecks() {
         console.error('Error in checkUpdates main loop:', err);
     }
 }
-
+});
 // Catch errors for interaction handler
 process.on('unhandledRejection', async (error) => {
     console.error('Unhandled interaction error:', error);
