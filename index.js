@@ -1345,7 +1345,7 @@ const channelMenu = new ChannelSelectMenuBuilder()
             }
 
         }
-
+}
         await interaction.deferUpdate();
 
         const gqlQuery = `
