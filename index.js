@@ -1296,7 +1296,7 @@ if (interaction.customId === 'settings_alert_channel') {
                 content: '📢 Choose the server channel for tracked anime alerts:',
                 components: [new ActionRowBuilder().addComponents(channelMenu)]
             });
-        }
+        
 
         return interaction.update({
             content: '🔔 Choose which notification type to change:',
