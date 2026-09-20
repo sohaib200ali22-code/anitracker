@@ -3591,22 +3591,7 @@ else if (commandName === 'servers') {
         const invite = await channel.createInvite({ maxAge: 3600, maxUses: 1 });
         await interaction.reply({ content: `🔗 **Invite Link for ${guild.name}:** ${invite.url}`, flags: 64 });
     }
-                else if (commandName === 'bot-status') {
-        if (!isOwner(interaction)) {
-            return interaction.reply({ content: '❌ Dev only command!', flags: 64 });
-        }
-
-        const activity = interaction.options.getString('activity');
-        const type = parseInt(interaction.options.getString('type'));
-
-        interaction.client.user.setActivity(activity, { type: type });
-
-        await interaction.reply({
-            content: `✅ Bot activity updated to: **${activity}**`,
-            flags: 64
-        });
-    }
-                    else if (commandName === 'bot-status' || commandName === 'setstatus') {
+else if (commandName === 'bot-status' || commandName === 'setstatus') {
     if (!isOwner(interaction)) {
         return interaction.reply({ content: '❌ Dev only command!', flags: 64 });
     }
