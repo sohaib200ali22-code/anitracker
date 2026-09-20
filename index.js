@@ -4350,7 +4350,7 @@ async function runUpdateChecks() {
 }
 }
 }
-});
+
 // Catch errors for interaction handler
 process.on('unhandledRejection', async (error) => {
     console.error('Unhandled interaction error:', error);
