@@ -1288,7 +1288,7 @@ if (interaction.customId === 'settings_alert_channel') {
             content: '❌ You need **Manage Channels** permission to change the server alert channel.',
             components: []
         });
-    }
+
 
     // قم بوضع باقي كود اختيار القناة هنا...
 const channelMenu = new ChannelSelectMenuBuilder()
