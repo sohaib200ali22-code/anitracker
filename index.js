@@ -1259,7 +1259,7 @@ client.on('interactionCreate', async (interaction) => {
             });
         }
     } // 👈 Closes string select menu check
-}); // 👈 Closes interactionCreate listener
+    
     // 1. معالجة زر Timezone
 if (interaction.customId === 'settings_timezone') {
     const modal = new ModalBuilder()
