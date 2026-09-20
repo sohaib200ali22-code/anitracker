@@ -1182,15 +1182,14 @@ client.on('interactionCreate', async (interaction) => {
                     content: `❌ You have no saved ${label} DM alerts to remove.`,
                     components: []
                 });
-            }
+
 
             return interaction.update({
                 content: `⚠️ This will remove all **${count}** saved ${label} DM alerts. Tracked server items will not be changed.\n\nAre you sure you want to continue?`,
                 components: [buildRemoveSavedConfirmation(mediaType, 1)]
             });
-        }
-    }
-});
+       } 
+    
 
         if (interaction.customId === 'myfavorites_type_select') {
             const favorites = await FavoriteItem.find({
