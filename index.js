@@ -1285,19 +1285,20 @@ if (interaction.customId === 'settings_alert_channel') {
     }
 
     // قم بوضع باقي كود اختيار القناة هنا...
-}
-            const channelMenu = new ChannelSelectMenuBuilder()
-                .setCustomId('settings_alert_channel_select')
-                .setPlaceholder('Choose the alert channel')
-                .addChannelTypes(ChannelType.GuildText)
-                .setMinValues(1)
-                .setMaxValues(1);
-            return interaction.update({
-                content: '📢 Choose the server channel for tracked anime alerts:',
-                components: [new ActionRowBuilder().addComponents(channelMenu)]
-            });
-        
+const channelMenu = new ChannelSelectMenuBuilder()
+            .setCustomId('settings_alert_channel_select')
+            .setPlaceholder('Choose the alert channel')
+            .addChannelTypes(ChannelType.GuildText)
+            .setMinValues(1)
+            .setMaxValues(1);
 
+        return interaction.update({
+            content: '📢 Choose the server channel for tracked anime alerts:',
+            components: [new ActionRowBuilder().addComponents(channelMenu)]
+        });
+    }
+
+    if (interaction.customId === 'settings_notifications_menu') {
         return interaction.update({
             content: '🔔 Choose which notification type to change:',
             components: buildNotificationButtons()
@@ -1312,7 +1313,6 @@ if (interaction.customId === 'settings_alert_channel') {
             components: [buildGenreMenu(mediaType, status === 'all' ? null : status)]
         });
     }
-
     if (interaction.customId.startsWith('genre_select_')) {
         const [, , mediaType, statusValue = 'all'] = interaction.customId.split('_');
         const genreChoice = interaction.values[0];
