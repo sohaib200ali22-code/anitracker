@@ -49,24 +49,12 @@ FavoriteSchema.index({ userId: 1, animeId: 1 });
 FavoriteSchema.index({ userId: 1, mediaType: 1 });
 const FavoriteItem = mongoose.model('FavoriteItem', FavoriteSchema);
 
+// MongoDB Schema for User Reports
 const ReportSchema = new mongoose.Schema({
     userId: String,
     messageHash: String,
     message: String,
     createdAt: { type: Date, default: Date.now }
-});
-ReportSchema.index({ userId: 1, messageHash: 1, createdAt: -1 });
-const Report = mongoose.model('Report', ReportSchema);
-
-async function findExistingFavorite(userId, animeId, animeTitle) {
-    return FavoriteItem.findOne({
-        userId,
-        $or: [
-            { animeId: String(animeId) },
-            { animeTitle }
-        ]
-    });
-}    createdAt: { type: Date, default: Date.now }
 });
 ReportSchema.index({ userId: 1, messageHash: 1, createdAt: -1 });
 const Report = mongoose.model('Report', ReportSchema);
@@ -118,7 +106,6 @@ async function fetchMangaDexSearch(search) {
         source: 'mangadex'
     };
 }
-
 async function fetchMangaDexLatestChapter(mangaId) {
     const response = await axios.get('https://api.mangadex.org/chapter', {
         params: {
