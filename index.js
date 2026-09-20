@@ -4261,7 +4261,7 @@ async function runUpdateChecks() {
             await sleep(350); // Safe pacing for AniList Rate Limit
         }
 
-        // 2. Check Personal Favorites (User DM Alerts)
+// 2. Check Personal Favorites (User DM Alerts)
         const favorites = await FavoriteItem.find({});
 
         for (const item of favorites) {
@@ -4286,6 +4286,7 @@ async function runUpdateChecks() {
                     }
                     continue;
                 }
+
                 let anime;
                 if (item.source === 'kitsu' || String(item.animeId).startsWith('kitsu_')) {
                     anime = await fetchKitsuAnime(String(item.animeId).replace(/^kitsu_/, ''));
@@ -4339,13 +4340,11 @@ async function runUpdateChecks() {
                                 .setColor('#f1c40f')
                                 .setTimestamp();
 
-// Send DM (catch error if user closed DMs)
                             await user.send({ embeds: [embed] }).catch(() => {
                                 console.log(`Could not send DM to user ${item.userId} (DMs might be closed).`);
                             });
                         }
 
-                        // Always update database so it doesn't loop forever
                         item.lastEpisodes = currentEps;
                         await item.save();
                     }
