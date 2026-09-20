@@ -4,6 +4,7 @@ const http = require('http');
 const mongoose = require('mongoose');
 require('dotenv').config();
 const { getAnimeJikan, getMangaJikan, getCharacterJikan } = require('./jikanFallback');
+
 // Web server workaround to keep Render alive 24/7
 http.createServer((req, res) => {
     res.write("AniTracker is running!");
@@ -11,9 +12,14 @@ http.createServer((req, res) => {
 }).listen(process.env.PORT || 3000);
 
 // Connect to MongoDB
-mongoose.connect(process.env.MONGODB_URI)
-    .then(() => console.log('Connected to MongoDB Atlas!'))
-    .catch(err => console.error('MongoDB connection error:', err));
+(async () => {
+    try {
+        await mongoose.connect(process.env.MONGODB_URI);
+        console.log('Connected to MongoDB Atlas!');
+    } catch (err) {
+        console.error('MongoDB connection error:', err);
+    }
+})();
 
 // MongoDB Schema for Server Tracked Items
 const TrackSchema = new mongoose.Schema({
@@ -48,6 +54,19 @@ const ReportSchema = new mongoose.Schema({
     messageHash: String,
     message: String,
     createdAt: { type: Date, default: Date.now }
+});
+ReportSchema.index({ userId: 1, messageHash: 1, createdAt: -1 });
+const Report = mongoose.model('Report', ReportSchema);
+
+async function findExistingFavorite(userId, animeId, animeTitle) {
+    return FavoriteItem.findOne({
+        userId,
+        $or: [
+            { animeId: String(animeId) },
+            { animeTitle }
+        ]
+    });
+}    createdAt: { type: Date, default: Date.now }
 });
 ReportSchema.index({ userId: 1, messageHash: 1, createdAt: -1 });
 const Report = mongoose.model('Report', ReportSchema);
