@@ -4089,23 +4089,37 @@ async function runUpdateChecks() {
 
                         const user = await client.users.fetch(item.userId).catch(() => null);
 
-                        if (user) {
+                                                if (user) {
                             const animeTitle = (anime.title && (anime.title.english || anime.title.romaji)) || item.animeTitle;
                             const siteUrl = anime.siteUrl || 'https://anilist.co';
                             const coverUrl = (anime.coverImage && anime.coverImage.large) || 'https://i.imgur.com/AGv4yDI.png';
 
+                            // حساب ميعاد الحلقة القادمة لو متوفر من AniList
+                            const nextEpisodeInfo = anime.nextAiringEpisode;
+                            let nextEpText = '───────────────\n⏳ **Next Episode:** *TBA / Not Announced Yet*';
+
+                            if (nextEpisodeInfo && nextEpisodeInfo.airingAt) {
+                                const nextEpNum = nextEpisodeInfo.episode;
+                                const timeRemaining = `<t:${nextEpisodeInfo.airingAt}:R>`; // تنسيق الوقت الديناميكي في ديسكورد
+                                nextEpText = `───────────────\n⏳ **Episode ${nextEpNum}:** Releasing ${timeRemaining}`;
+                            }
+
                             const embed = new EmbedBuilder()
-                                .setTitle('⭐ Favorite Anime Update!')
-                                .setDescription(`A new episode of **[${animeTitle}](${siteUrl})** is out!\n\n📺 **Current Episodes:** ${currentEps}`)
+                                .setAuthor({ name: 'AniTracker Updates', iconURL: 'https://i.imgur.com/AGv4yDI.png' })
+                                .setTitle(`🌸 ${animeTitle}`)
+                                .setURL(siteUrl)
+                                .setDescription(`🎉 **A new episode has just aired!**\n\n📺 **Latest Episode:** \`Episode ${currentEps}\`\n${nextEpText}`)
                                 .setThumbnail(coverUrl)
-                                .setColor('#f1c40f')
+                                .setColor('#2b2d42') // لون أنيق ومريح للعين
+                                .setFooter({ text: 'AniTracker • Never miss an episode', iconURL: client.user.displayAvatarURL() })
                                 .setTimestamp();
 
                             // Send DM (catch error if user closed DMs)
                             await user.send({ embeds: [embed] }).catch(() => {
                                 console.log(`Could not send DM to user ${item.userId} (DMs might be closed).`);
                             });
-                        }
+                                }
+                        
 
                         // Always update database so it doesn't loop forever
                         item.lastEpisodes = currentEps;
@@ -4113,7 +4127,14 @@ async function runUpdateChecks() {
                     }
                 }
             } catch (err) {
-                console.error(`Error checking DM update for user ${item.userId}:`, err.message);
+                console.log(`Skipping DM update for user ${item.userId}: ${err.message}`);
+                // تحديث الداتا بيز حتى لو حصل إيرور عشان ما يعيدش الريكوست المضروب في اللوب الجاية
+                try {
+                    item.lastEpisodes = currentEps;
+                    await item.save();
+                } catch (saveErr) {
+                    console.error('Failed to update item after error:', saveErr.message);
+                }
             }
 
             await sleep(350);
@@ -4126,8 +4147,8 @@ async function runUpdateChecks() {
     }).catch(async error => {
         console.error('Unhandled interaction error:', error);
         try {
-            if (interaction.isRepliable() && !interaction.replied && !interaction.deferred) await interaction.reply({ content: '? Something went wrong. Please try again later.', flags: MessageFlags.Ephemeral });
-            else if (interaction.isRepliable()) await interaction.followUp({ content: '? Something went wrong. Please try again later.', flags: MessageFlags.Ephemeral });
+            if (interaction.isRepliable() && !interaction.replied && !interaction.deferred) await interaction.reply({ content: '❌ Something went wrong. Please try again later.', flags: MessageFlags.Ephemeral });
+            else if (interaction.isRepliable()) await interaction.followUp({ content: '❌ Something went wrong. Please try again later.', flags: MessageFlags.Ephemeral });
         } catch (replyError) { console.error('Interaction error response failed:', replyError.message); }
     });
 });
